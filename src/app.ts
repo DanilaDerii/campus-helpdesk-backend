@@ -1,4 +1,5 @@
-import express, { type NextFunction, type Request, type Response } from "express";
+import express from "express";
+import { errorHandler } from "./middleware/error-handler.js";
 import { apiRoutes } from "./routes/index.js";
 
 export function createApp() {
@@ -17,12 +18,7 @@ export function createApp() {
     response.status(404).json({ error: "route_not_found" });
   });
 
-  app.use(
-    (error: unknown, _request: Request, response: Response, _next: NextFunction) => {
-      console.error(error);
-      response.status(500).json({ error: "internal_server_error" });
-    },
-  );
+  app.use(errorHandler);
 
   return app;
 }

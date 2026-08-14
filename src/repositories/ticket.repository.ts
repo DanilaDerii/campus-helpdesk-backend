@@ -15,9 +15,16 @@ export interface CreateTicketRecordInput {
   source?: TicketSource;
 }
 
+const safeUserSelection = {
+  id: true,
+  email: true,
+  displayName: true,
+  role: true,
+} as const;
+
 const ticketSummaryRelations = {
-  requester: true,
-  assignedTechnician: true,
+  requester: { select: safeUserSelection },
+  assignedTechnician: { select: safeUserSelection },
   category: true,
 } as const;
 
@@ -48,15 +55,12 @@ export function findTicketById(
     include: {
       ...ticketSummaryRelations,
       comments: {
-        include: { author: true },
+        include: { author: { select: safeUserSelection } },
         orderBy: { createdAt: "asc" },
       },
       history: {
-        include: { changedBy: true },
+        include: { changedBy: { select: safeUserSelection } },
         orderBy: { createdAt: "asc" },
-      },
-      notifications: {
-        orderBy: { createdAt: "desc" },
       },
     },
   });
@@ -92,6 +96,25 @@ export function listTicketsAssignedToTechnician(
     where: { assignedTechnicianId: technicianId },
     include: ticketSummaryRelations,
     orderBy: { updatedAt: "desc" },
+  });
+}
+
+export function listTicketsVisibleToTechnician(
+  technicianId: number,
+  database: DatabaseClient = prisma,
+) {
+  return database.ticket.findMany({
+    where: {
+      OR: [
+        { assignedTechnicianId: technicianId },
+        {
+          assignedTechnicianId: null,
+          status: TicketStatus.OPEN,
+        },
+      ],
+    },
+    include: ticketSummaryRelations,
+    orderBy: { createdAt: "desc" },
   });
 }
 

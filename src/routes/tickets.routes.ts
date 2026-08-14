@@ -1,11 +1,17 @@
 import { Router } from "express";
+import {
+  createTicketController,
+  getTicketController,
+  listTicketsController,
+} from "../controllers/ticket.controller.js";
+import { requireAuthentication } from "../middleware/require-authentication.js";
 import { notImplemented } from "../shared/not-implemented.js";
 
 export const ticketRoutes = Router();
 
-ticketRoutes.post("/", notImplemented("Create a ticket"));
-ticketRoutes.get("/", notImplemented("List tickets allowed for the current user"));
-ticketRoutes.get("/:ticketId", notImplemented("View one allowed ticket"));
+ticketRoutes.post("/", requireAuthentication, createTicketController);
+ticketRoutes.get("/", requireAuthentication, listTicketsController);
+ticketRoutes.get("/:ticketId", requireAuthentication, getTicketController);
 ticketRoutes.post("/:ticketId/claim", notImplemented("Claim an open ticket"));
 ticketRoutes.patch("/:ticketId/status", notImplemented("Update ticket status"));
 ticketRoutes.patch(

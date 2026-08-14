@@ -15,7 +15,7 @@ The first priority is our own application. Peer-team integration remains mocked 
 - [x] Focused Prisma repositories
 - [ ] Configuration validation
 - [ ] Shared request validation
-- [ ] Shared error handling
+- [x] Shared error handling
 - [x] Prisma schema
 - [x] Initial Prisma migration
 - [x] Local database seed
@@ -24,8 +24,8 @@ The first priority is our own application. Peer-team integration remains mocked 
 
 - [ ] `GET /api/v1/auth/login`
 - [ ] `GET /api/v1/auth/callback`
-- [ ] `POST /api/v1/auth/dev-login`
-- [ ] `GET /api/v1/me`
+- [x] `POST /api/v1/auth/dev-login`
+- [x] `GET /api/v1/me`
 - [x] JWT creation and verification service
 - [x] Development authentication service
 - [ ] Microsoft identity provider
@@ -34,9 +34,9 @@ The first priority is our own application. Peer-team integration remains mocked 
 
 ## Tickets
 
-- [ ] `POST /api/v1/tickets`
-- [ ] `GET /api/v1/tickets`
-- [ ] `GET /api/v1/tickets/:ticketId`
+- [x] `POST /api/v1/tickets`
+- [x] `GET /api/v1/tickets`
+- [x] `GET /api/v1/tickets/:ticketId`
 - [ ] `POST /api/v1/tickets/:ticketId/claim`
 - [ ] `PATCH /api/v1/tickets/:ticketId/status`
 - [ ] `PATCH /api/v1/tickets/:ticketId/assignment`
@@ -46,7 +46,7 @@ The first priority is our own application. Peer-team integration remains mocked 
 
 ## Administration
 
-- [ ] `GET /api/v1/categories`
+- [x] `GET /api/v1/categories`
 - [ ] `POST /api/v1/categories`
 - [ ] `PATCH /api/v1/categories/:categoryId`
 - [ ] `DELETE /api/v1/categories/:categoryId`

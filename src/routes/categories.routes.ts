@@ -1,9 +1,11 @@
 import { Router } from "express";
+import { listCategoriesController } from "../controllers/category.controller.js";
+import { requireAuthentication } from "../middleware/require-authentication.js";
 import { notImplemented } from "../shared/not-implemented.js";
 
 export const categoryRoutes = Router();
 
-categoryRoutes.get("/", notImplemented("List ticket categories"));
+categoryRoutes.get("/", requireAuthentication, listCategoriesController);
 categoryRoutes.post("/", notImplemented("Create a ticket category"));
 categoryRoutes.patch("/:categoryId", notImplemented("Update a ticket category"));
 categoryRoutes.delete(
