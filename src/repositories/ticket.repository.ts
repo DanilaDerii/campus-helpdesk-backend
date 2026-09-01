@@ -2,7 +2,7 @@ import {
   TicketPriority,
   TicketSource,
   TicketStatus,
-} from "../generated/prisma/client.js";
+} from "../../generated/prisma/client.js";
 import { prisma, type DatabaseClient } from "../database/prisma.js";
 
 export interface CreateTicketRecordInput {
@@ -66,6 +66,24 @@ export function findTicketById(
   });
 }
 
+/** Load only the ticket fields needed for access checks and notifications. */
+export function findTicketAccessRecordById(
+  id: number,
+  database: DatabaseClient = prisma,
+) {
+  return database.ticket.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      requesterId: true,
+      assignedTechnicianId: true,
+      status: true,
+      requester: { select: safeUserSelection },
+      assignedTechnician: { select: safeUserSelection },
+    },
+  });
+}
+
 export function listTicketsByRequester(
   requesterId: number,
   database: DatabaseClient = prisma,
@@ -74,28 +92,6 @@ export function listTicketsByRequester(
     where: { requesterId },
     include: ticketSummaryRelations,
     orderBy: { createdAt: "desc" },
-  });
-}
-
-export function listAvailableTickets(database: DatabaseClient = prisma) {
-  return database.ticket.findMany({
-    where: {
-      assignedTechnicianId: null,
-      status: TicketStatus.OPEN,
-    },
-    include: ticketSummaryRelations,
-    orderBy: { createdAt: "asc" },
-  });
-}
-
-export function listTicketsAssignedToTechnician(
-  technicianId: number,
-  database: DatabaseClient = prisma,
-) {
-  return database.ticket.findMany({
-    where: { assignedTechnicianId: technicianId },
-    include: ticketSummaryRelations,
-    orderBy: { updatedAt: "desc" },
   });
 }
 
@@ -148,25 +144,36 @@ export async function claimOpenTicket(
 
 export function assignTechnician(
   ticketId: number,
-  technicianId: number | null,
-  database: DatabaseClient = prisma,
-) {
-  return database.ticket.update({
-    where: { id: ticketId },
-    data: { assignedTechnicianId: technicianId },
-  });
-}
-
-export function updateTicketStatus(
-  ticketId: number,
-  status: TicketStatus,
+  technicianId: number,
   database: DatabaseClient = prisma,
 ) {
   return database.ticket.update({
     where: { id: ticketId },
     data: {
+      assignedTechnicianId: technicianId,
+      status: TicketStatus.IN_PROGRESS,
+    },
+    include: ticketSummaryRelations,
+  });
+}
+
+/** Change status only if no other request has changed it since it was read. */
+export async function transitionTicketStatus(
+  ticketId: number,
+  expectedStatus: TicketStatus,
+  status: TicketStatus,
+  database: DatabaseClient = prisma,
+): Promise<boolean> {
+  const result = await database.ticket.updateMany({
+    where: {
+      id: ticketId,
+      status: expectedStatus,
+    },
+    data: {
       status,
       resolvedAt: status === TicketStatus.RESOLVED ? new Date() : null,
     },
   });
+
+  return result.count === 1;
 }

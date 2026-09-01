@@ -3,13 +3,10 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import {
   PrismaClient,
   type Prisma,
-} from "../generated/prisma/client.js";
+} from "../../generated/prisma/client.js";
+import { configuredSecretProvider } from "../providers/secrets/configured-secret-provider.js";
 
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  throw new Error("DATABASE_URL is required to connect to PostgreSQL");
-}
+const connectionString = await configuredSecretProvider.get("DATABASE_URL");
 
 const globalDatabase = globalThis as unknown as {
   prisma?: PrismaClient;

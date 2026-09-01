@@ -1,4 +1,4 @@
-import type { Role } from "../generated/prisma/client.js";
+import type { Role } from "../../generated/prisma/client.js";
 import { prisma, type DatabaseClient } from "../database/prisma.js";
 
 export interface IdentityUserInput {
@@ -11,6 +11,16 @@ export interface UserAccessUpdate {
   role?: Role;
   isActive?: boolean;
 }
+
+const managedUserSelection = {
+  id: true,
+  email: true,
+  displayName: true,
+  role: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 export function findUserById(id: number, database: DatabaseClient = prisma) {
   return database.user.findUnique({ where: { id } });
@@ -32,6 +42,7 @@ export function findUserByMicrosoftOid(
 
 export function listUsers(database: DatabaseClient = prisma) {
   return database.user.findMany({
+    select: managedUserSelection,
     orderBy: [{ role: "asc" }, { displayName: "asc" }],
   });
 }
@@ -64,5 +75,6 @@ export function updateUserAccess(
   return database.user.update({
     where: { id },
     data: update,
+    select: managedUserSelection,
   });
 }

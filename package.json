@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js",
+    "build": "prisma generate && tsc",
+    "start": "node dist/src/server.js",
     "db:start": "docker compose up -d postgres",
     "db:stop": "docker compose down",
     "db:generate": "prisma generate",

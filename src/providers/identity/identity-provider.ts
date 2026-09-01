@@ -4,7 +4,7 @@ export interface ExternalIdentity {
   displayName: string;
 }
 
-/** Development and Microsoft Entra implementations will follow this contract. */
+/** Development and Microsoft Entra implementations share this contract. */
 export interface IdentityProvider {
   completeLogin(input: unknown): Promise<ExternalIdentity>;
 }

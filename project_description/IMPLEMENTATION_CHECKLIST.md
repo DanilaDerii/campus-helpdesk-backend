@@ -14,7 +14,7 @@ The first priority is our own application. Peer-team integration remains mocked 
 - [x] Shared Prisma database client
 - [x] Focused Prisma repositories
 - [ ] Configuration validation
-- [ ] Shared request validation
+- [x] Shared request validation
 - [x] Shared error handling
 - [x] Prisma schema
 - [x] Initial Prisma migration
@@ -30,36 +30,36 @@ The first priority is our own application. Peer-team integration remains mocked 
 - [x] Development authentication service
 - [ ] Microsoft identity provider
 - [x] Active-user check in authentication service
-- [ ] Role and ownership checks
+- [x] Role and ownership checks
 
 ## Tickets
 
 - [x] `POST /api/v1/tickets`
 - [x] `GET /api/v1/tickets`
 - [x] `GET /api/v1/tickets/:ticketId`
-- [ ] `POST /api/v1/tickets/:ticketId/claim`
-- [ ] `PATCH /api/v1/tickets/:ticketId/status`
-- [ ] `PATCH /api/v1/tickets/:ticketId/assignment`
-- [ ] `POST /api/v1/tickets/:ticketId/comments`
-- [ ] `GET /api/v1/tickets/:ticketId/comments`
-- [ ] `GET /api/v1/tickets/:ticketId/history`
+- [x] `POST /api/v1/tickets/:ticketId/claim`
+- [x] `PATCH /api/v1/tickets/:ticketId/status`
+- [x] `PATCH /api/v1/tickets/:ticketId/assignment`
+- [x] `POST /api/v1/tickets/:ticketId/comments`
+- [x] `GET /api/v1/tickets/:ticketId/comments`
+- [x] `GET /api/v1/tickets/:ticketId/history`
 
 ## Administration
 
 - [x] `GET /api/v1/categories`
-- [ ] `POST /api/v1/categories`
-- [ ] `PATCH /api/v1/categories/:categoryId`
-- [ ] `DELETE /api/v1/categories/:categoryId`
-- [ ] `GET /api/v1/users`
-- [ ] `PATCH /api/v1/users/:userId`
+- [x] `POST /api/v1/categories`
+- [x] `PATCH /api/v1/categories/:categoryId`
+- [x] `DELETE /api/v1/categories/:categoryId`
+- [x] `GET /api/v1/users`
+- [x] `PATCH /api/v1/users/:userId`
 
 ## Notifications
 
-- [ ] Store pending email notifications
-- [ ] Console email provider for local development
+- [x] Store pending email notifications
+- [x] Console email provider for local development
 - [ ] Brevo email provider
-- [ ] Record sent and failed attempts
-- [ ] Ensure email failure does not reverse ticket changes
+- [x] Record sent and failed attempts
+- [x] Ensure email failure does not reverse ticket changes
 
 ## Deferred peer integration
 

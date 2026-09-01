@@ -1,10 +1,15 @@
 import { Router } from "express";
-import { notImplemented } from "../shared/not-implemented.js";
+import {
+  listUsersController,
+  updateUserController,
+} from "../controllers/user.controller.js";
+import { requireAuthentication } from "../middleware/require-authentication.js";
 
 export const userRoutes = Router();
 
-userRoutes.get("/", notImplemented("Administrator user list"));
+userRoutes.get("/", requireAuthentication, listUsersController);
 userRoutes.patch(
   "/:userId",
-  notImplemented("Change a user's role or active state"),
+  requireAuthentication,
+  updateUserController,
 );

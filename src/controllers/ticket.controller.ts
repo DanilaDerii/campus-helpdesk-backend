@@ -1,11 +1,27 @@
 import type { RequestHandler } from "express";
-import { TicketPriority } from "../generated/prisma/client.js";
 import {
+  TicketPriority,
+  TicketStatus,
+} from "../../generated/prisma/client.js";
+import {
+  addTicketComment,
+  assignTicketTechnician,
+  changeTicketStatus,
+  claimTicket,
   createTicket,
+  getTicketCommentsForUser,
   getTicketForUser,
+  getTicketHistoryForUser,
   listTicketsForUser,
 } from "../services/ticket.service.js";
-import { HttpError } from "../shared/http-error.js";
+import {
+  readEnumValue,
+  readPositiveIntegerParameter,
+  readPositiveIntegerValue,
+  readRequestObject,
+  readStringValue,
+  requireAuthenticatedUser,
+} from "../validation/request-validation.js";
 
 interface TicketRequestBody {
   categoryId: number;
@@ -15,84 +31,31 @@ interface TicketRequestBody {
   priority?: TicketPriority;
 }
 
-function isRequestObject(body: unknown): body is Record<string, unknown> {
-  return typeof body === "object" && body !== null;
-}
-
-function readOptionalString(
-  body: Record<string, unknown>,
-  field: "description" | "location",
-  maximumLength?: number,
-): string {
-  const value = body[field];
-
-  if (value === undefined) {
-    return "";
-  }
-
-  if (typeof value !== "string") {
-    throw new HttpError(400, "INVALID_REQUEST", `${field} must be a string`);
-  }
-
-  if (maximumLength !== undefined && value.length > maximumLength) {
-    throw new HttpError(
-      400,
-      "INVALID_REQUEST",
-      `${field} must not exceed ${maximumLength} characters`,
-    );
-  }
-
-  return value.trim();
-}
-
 function readTicketBody(body: unknown): TicketRequestBody {
-  if (!isRequestObject(body)) {
-    throw new HttpError(400, "INVALID_REQUEST", "A JSON request body is required");
-  }
-
-  if (!Number.isSafeInteger(body.categoryId) || Number(body.categoryId) <= 0) {
-    throw new HttpError(
-      400,
-      "INVALID_REQUEST",
-      "categoryId must be a positive integer",
-    );
-  }
-
-  if (typeof body.title !== "string" || body.title.trim() === "") {
-    throw new HttpError(400, "INVALID_REQUEST", "title is required");
-  }
-
-  const title = body.title.trim();
-
-  if (title.length > 200) {
-    throw new HttpError(
-      400,
-      "INVALID_REQUEST",
-      "title must not exceed 200 characters",
-    );
-  }
-
+  const requestBody = readRequestObject(body);
   const priorityValues = Object.values(TicketPriority);
-  const priority = body.priority;
-
-  if (
-    priority !== undefined &&
-    (typeof priority !== "string" ||
-      !priorityValues.includes(priority as TicketPriority))
-  ) {
-    throw new HttpError(
-      400,
-      "INVALID_REQUEST",
-      `priority must be one of: ${priorityValues.join(", ")}`,
-    );
-  }
+  const priority =
+    requestBody.priority === undefined
+      ? undefined
+      : readEnumValue(requestBody.priority, "priority", priorityValues);
 
   return {
-    categoryId: Number(body.categoryId),
-    title,
-    description: readOptionalString(body, "description"),
-    location: readOptionalString(body, "location", 200),
-    ...(priority ? { priority: priority as TicketPriority } : {}),
+    categoryId: readPositiveIntegerValue(requestBody.categoryId, "categoryId"),
+    title: readStringValue(requestBody.title, "title", { maximumLength: 200 }),
+    description:
+      requestBody.description === undefined
+        ? ""
+        : readStringValue(requestBody.description, "description", {
+            allowEmpty: true,
+          }),
+    location:
+      requestBody.location === undefined
+        ? ""
+        : readStringValue(requestBody.location, "location", {
+            allowEmpty: true,
+            maximumLength: 200,
+          }),
+    ...(priority !== undefined ? { priority } : {}),
   };
 }
 
@@ -100,55 +63,20 @@ export const createTicketController: RequestHandler = async (
   request,
   response,
 ) => {
-  if (!request.authenticatedUser) {
-    throw new HttpError(401, "AUTHENTICATION_REQUIRED", "Login is required");
-  }
-
+  const currentUser = requireAuthenticatedUser(request);
   const ticket = await createTicket(
-    request.authenticatedUser,
+    currentUser,
     readTicketBody(request.body),
   );
 
   response.status(201).json({ ticket });
 };
 
-function requireAuthenticatedUser(
-  authenticatedUser: Express.Request["authenticatedUser"],
-) {
-  if (!authenticatedUser) {
-    throw new HttpError(401, "AUTHENTICATION_REQUIRED", "Login is required");
-  }
-
-  return authenticatedUser;
-}
-
-function readTicketId(value: string | string[] | undefined): number {
-  if (Array.isArray(value)) {
-    throw new HttpError(
-      400,
-      "INVALID_TICKET_ID",
-      "ticketId must be a positive integer",
-    );
-  }
-
-  const ticketId = Number(value);
-
-  if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
-    throw new HttpError(
-      400,
-      "INVALID_TICKET_ID",
-      "ticketId must be a positive integer",
-    );
-  }
-
-  return ticketId;
-}
-
 export const listTicketsController: RequestHandler = async (
   request,
   response,
 ) => {
-  const currentUser = requireAuthenticatedUser(request.authenticatedUser);
+  const currentUser = requireAuthenticatedUser(request);
   const tickets = await listTicketsForUser(currentUser);
   response.status(200).json({ tickets });
 };
@@ -157,11 +85,123 @@ export const getTicketController: RequestHandler = async (
   request,
   response,
 ) => {
-  const currentUser = requireAuthenticatedUser(request.authenticatedUser);
+  const currentUser = requireAuthenticatedUser(request);
   const ticket = await getTicketForUser(
     currentUser,
-    readTicketId(request.params.ticketId),
+    readPositiveIntegerParameter(
+      request.params.ticketId,
+      "ticketId",
+      "INVALID_TICKET_ID",
+    ),
   );
 
   response.status(200).json({ ticket });
+};
+
+export const claimTicketController: RequestHandler = async (
+  request,
+  response,
+) => {
+  const currentUser = requireAuthenticatedUser(request);
+  const ticket = await claimTicket(
+    currentUser,
+    readPositiveIntegerParameter(
+      request.params.ticketId,
+      "ticketId",
+      "INVALID_TICKET_ID",
+    ),
+  );
+
+  response.status(200).json({ ticket });
+};
+
+export const assignTicketController: RequestHandler = async (
+  request,
+  response,
+) => {
+  const currentUser = requireAuthenticatedUser(request);
+  const body = readRequestObject(request.body);
+  const ticket = await assignTicketTechnician(
+    currentUser,
+    readPositiveIntegerParameter(
+      request.params.ticketId,
+      "ticketId",
+      "INVALID_TICKET_ID",
+    ),
+    readPositiveIntegerValue(body.technicianId, "technicianId"),
+  );
+
+  response.status(200).json({ ticket });
+};
+
+export const updateTicketStatusController: RequestHandler = async (
+  request,
+  response,
+) => {
+  const currentUser = requireAuthenticatedUser(request);
+  const body = readRequestObject(request.body);
+  const ticket = await changeTicketStatus(
+    currentUser,
+    readPositiveIntegerParameter(
+      request.params.ticketId,
+      "ticketId",
+      "INVALID_TICKET_ID",
+    ),
+    readEnumValue(body.status, "status", Object.values(TicketStatus)),
+  );
+
+  response.status(200).json({ ticket });
+};
+
+export const addTicketCommentController: RequestHandler = async (
+  request,
+  response,
+) => {
+  const currentUser = requireAuthenticatedUser(request);
+  const body = readRequestObject(request.body);
+  const comment = await addTicketComment(
+    currentUser,
+    readPositiveIntegerParameter(
+      request.params.ticketId,
+      "ticketId",
+      "INVALID_TICKET_ID",
+    ),
+    readStringValue(body.message, "Comment message", { maximumLength: 5000 }),
+  );
+
+  response.status(201).json({ comment });
+};
+
+export const listTicketCommentsController: RequestHandler = async (
+  request,
+  response,
+) => {
+  const currentUser = requireAuthenticatedUser(request);
+  const comments = await getTicketCommentsForUser(
+    currentUser,
+    readPositiveIntegerParameter(
+      request.params.ticketId,
+      "ticketId",
+      "INVALID_TICKET_ID",
+    ),
+  );
+
+  response.status(200).json({ comments });
+};
+
+export const listTicketHistoryController: RequestHandler = async (
+  request,
+  response,
+) => {
+  const currentUser = requireAuthenticatedUser(request);
+  const history = await getTicketHistoryForUser(
+    currentUser,
+    readPositiveIntegerParameter(
+      request.params.ticketId,
+      "ticketId",
+      "INVALID_TICKET_ID",
+    ),
+  );
+
+  response.status(200).json({ history });
 };

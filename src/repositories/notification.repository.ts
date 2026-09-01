@@ -1,4 +1,4 @@
-import { DeliveryStatus } from "../generated/prisma/client.js";
+import { DeliveryStatus } from "../../generated/prisma/client.js";
 import { prisma, type DatabaseClient } from "../database/prisma.js";
 
 export interface PendingNotificationInput {
@@ -18,7 +18,7 @@ export function createPendingNotification(
 
 export function markNotificationSent(
   id: number,
-  providerMessageId: string,
+  providerMessageId: string | null,
   database: DatabaseClient = prisma,
 ) {
   return database.emailNotification.update({
@@ -48,9 +48,33 @@ export function markNotificationFailed(
   });
 }
 
-export function listFailedNotifications(database: DatabaseClient = prisma) {
+export function findNotificationForDelivery(
+  id: number,
+  database: DatabaseClient = prisma,
+) {
+  return database.emailNotification.findUnique({
+    where: { id },
+    include: {
+      ticket: {
+        select: {
+          id: true,
+          title: true,
+          status: true,
+        },
+      },
+    },
+  });
+}
+
+export function listUndeliveredNotifications(
+  database: DatabaseClient = prisma,
+) {
   return database.emailNotification.findMany({
-    where: { deliveryStatus: DeliveryStatus.FAILED },
+    where: {
+      deliveryStatus: {
+        in: [DeliveryStatus.PENDING, DeliveryStatus.FAILED],
+      },
+    },
     orderBy: { createdAt: "asc" },
   });
 }

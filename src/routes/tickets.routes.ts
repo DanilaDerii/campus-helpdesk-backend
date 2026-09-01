@@ -1,23 +1,49 @@
 import { Router } from "express";
 import {
+  addTicketCommentController,
+  assignTicketController,
+  claimTicketController,
   createTicketController,
   getTicketController,
+  listTicketCommentsController,
+  listTicketHistoryController,
   listTicketsController,
+  updateTicketStatusController,
 } from "../controllers/ticket.controller.js";
 import { requireAuthentication } from "../middleware/require-authentication.js";
-import { notImplemented } from "../shared/not-implemented.js";
 
 export const ticketRoutes = Router();
 
 ticketRoutes.post("/", requireAuthentication, createTicketController);
 ticketRoutes.get("/", requireAuthentication, listTicketsController);
 ticketRoutes.get("/:ticketId", requireAuthentication, getTicketController);
-ticketRoutes.post("/:ticketId/claim", notImplemented("Claim an open ticket"));
-ticketRoutes.patch("/:ticketId/status", notImplemented("Update ticket status"));
+ticketRoutes.post(
+  "/:ticketId/claim",
+  requireAuthentication,
+  claimTicketController,
+);
+ticketRoutes.patch(
+  "/:ticketId/status",
+  requireAuthentication,
+  updateTicketStatusController,
+);
 ticketRoutes.patch(
   "/:ticketId/assignment",
-  notImplemented("Assign or reassign a technician"),
+  requireAuthentication,
+  assignTicketController,
 );
-ticketRoutes.post("/:ticketId/comments", notImplemented("Add a ticket comment"));
-ticketRoutes.get("/:ticketId/comments", notImplemented("List ticket comments"));
-ticketRoutes.get("/:ticketId/history", notImplemented("View ticket history"));
+ticketRoutes.post(
+  "/:ticketId/comments",
+  requireAuthentication,
+  addTicketCommentController,
+);
+ticketRoutes.get(
+  "/:ticketId/comments",
+  requireAuthentication,
+  listTicketCommentsController,
+);
+ticketRoutes.get(
+  "/:ticketId/history",
+  requireAuthentication,
+  listTicketHistoryController,
+);

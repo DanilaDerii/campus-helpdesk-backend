@@ -1,4 +1,5 @@
-import type { Role } from "../generated/prisma/client.js";
+import type { Role } from "../../generated/prisma/client.js";
+import { DevelopmentIdentityProvider } from "../providers/identity/development-identity-provider.js";
 import { findUserByEmail, findUserById } from "../repositories/index.js";
 import {
   createAccessToken,
@@ -35,6 +36,8 @@ export interface DevelopmentLoginResult {
   user: AuthenticatedUser;
 }
 
+const developmentIdentityProvider = new DevelopmentIdentityProvider();
+
 function toAuthenticatedUser(user: AuthenticatedUser): AuthenticatedUser {
   return {
     id: user.id,
@@ -55,8 +58,8 @@ export async function developmentLogin(
     );
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
-  const user = normalizedEmail ? await findUserByEmail(normalizedEmail) : null;
+  const identity = await developmentIdentityProvider.completeLogin({ email });
+  const user = await findUserByEmail(identity.email);
 
   if (!user) {
     throw new AuthenticationError(

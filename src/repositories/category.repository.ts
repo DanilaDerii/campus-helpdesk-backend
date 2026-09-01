@@ -18,6 +18,13 @@ export function findCategoryById(
   return database.ticketCategory.findUnique({ where: { id } });
 }
 
+export function findCategoryByName(
+  name: string,
+  database: DatabaseClient = prisma,
+) {
+  return database.ticketCategory.findUnique({ where: { name } });
+}
+
 export function createCategory(
   input: CategoryInput,
   database: DatabaseClient = prisma,
@@ -50,4 +57,11 @@ export function deleteUnusedCategory(
   database: DatabaseClient = prisma,
 ) {
   return database.ticketCategory.delete({ where: { id } });
+}
+
+export function countTicketsUsingCategory(
+  categoryId: number,
+  database: DatabaseClient = prisma,
+) {
+  return database.ticket.count({ where: { categoryId } });
 }
