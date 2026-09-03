@@ -211,6 +211,16 @@ Until this exists, `src/alex/identity/entra.routes.ts` stays a placeholder.
 
 None of these block Alex, but they sit in the backend owner's area:
 
+- [ ] Add the optional `GET /ready` readiness endpoint from
+  `project_description/DEVELOPMENT_LOGIC.md` section 10. `GET /health`
+  returns 200 without touching PostgreSQL, so it reports a healthy service
+  even when the database is unreachable. This happened on the deployed VM:
+  after a reboot the database container did not come back, and for roughly
+  eight minutes `/health` answered `{"status":"ok"}` while no authenticated
+  request could be served and the notification retry worker was failing on
+  every pass. A readiness check that runs a trivial query such as
+  `SELECT 1` and answers 503 when it fails would make process supervision,
+  uptime checks, and deployment verification meaningful.
 - [ ] `package.json` has no `engines` field. The code uses ESM top-level
   `await`, so the supported Node version (22 or newer) should be pinned for
   deployment.
