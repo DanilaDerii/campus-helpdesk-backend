@@ -184,6 +184,57 @@ framework.
 - [ ] Update `project_description/IMPLEMENTATION_CHECKLIST.md` as items finish.
 - [ ] Keep this `todo.md` current after each merged responsibility.
 
+### 5.6 Blocking request from Alex — external login service
+
+Alex cannot finish `GET /api/v1/auth/callback` (section 6.2) until the core
+exposes a public service for external identities. `src/alex/**` must not call
+repositories or Prisma directly, and `src/services/auth.service.ts` currently
+exports only `developmentLogin` and `authenticateAccessToken`, so a successful
+Microsoft login has nowhere to land.
+
+- [ ] Add a public service function to `src/services/auth.service.ts`, for
+  example `completeExternalLogin(identity: ExternalIdentity):
+  Promise<DevelopmentLoginResult>`. It should upsert the local user by
+  `microsoftOid` through the existing `upsertUserFromIdentity` repository,
+  reject an inactive user with the existing
+  `AuthenticationError("USER_INACTIVE", ...)`, and return the same
+  `{ accessToken, tokenType, expiresInSeconds, user }` shape that
+  `developmentLogin` returns.
+- [ ] Confirm the default role for a first-time university user.
+  `project_description/DEVELOPMENT_LOGIC.md` section 8.2 says `STUDENT`.
+- [ ] Decide whether the login result type should be renamed from
+  `DevelopmentLoginResult`, since Microsoft login will share it.
+
+Until this exists, `src/alex/identity/entra.routes.ts` stays a placeholder.
+
+### 5.7 Smaller core observations raised by Alex
+
+None of these block Alex, but they sit in the backend owner's area:
+
+- [ ] `package.json` has no `engines` field. The code uses ESM top-level
+  `await`, so the supported Node version (22 or newer) should be pinned for
+  deployment.
+- [ ] `src/database/prisma.ts` and `src/services/token.service.ts` resolve
+  secrets with top-level `await` at import time. Test setup in section 5.4 must
+  supply `DATABASE_URL` and `JWT_SECRET` before the module graph loads, or the
+  modules need an injection seam.
+- [ ] `prisma/seed.ts` is outside the `tsconfig.json` `include` array, so `tsc`
+  never typechecks it.
+- [ ] `PUBLIC_BASE_PATH` exists in `.env.example` but nothing reads it. The app
+  serves absolute paths and Nginx strips the `/helpdesk` prefix, so either wire
+  it into section 5.1 configuration validation or remove it from the example.
+- [ ] Deprecation from `pg` observed at runtime on the deployed VM: "Calling
+  `client.query()` when the client is already executing a query is deprecated
+  and will be removed in pg@9.0". It appears during normal ticket creation,
+  most likely where the notification retry worker overlaps a request on the
+  same client. Harmless today, breaking on `pg@9`.
+- [ ] RBAC divergence: `requireTicketClaimAccess` allows `TECHNICIAN` only, but
+  `DEVELOPMENT_LOGIC.md` sections 8.3 and 9.2 both say an administrator may
+  claim an unassigned ticket. An administrator also cannot assign a ticket to
+  themselves, because `assignTicketTechnician` requires the assignee to be a
+  `TECHNICIAN`. The result is that no administrator can take ownership of a
+  ticket. Either fix the code or update the document.
+
 ## 6. Alex — production providers
 
 Primary source path: `src/alex/**`.
