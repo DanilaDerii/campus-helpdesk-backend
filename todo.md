@@ -186,26 +186,75 @@ framework.
 
 ### 5.6 Blocking request from Alex — external login service
 
-Alex cannot finish `GET /api/v1/auth/callback` (section 6.2) until the core
-exposes a public service for external identities. `src/alex/**` must not call
-repositories or Prisma directly, and `src/services/auth.service.ts` currently
-exports only `developmentLogin` and `authenticateAccessToken`, so a successful
-Microsoft login has nowhere to land.
+Status: this is the only thing standing between the project and a working
+university Microsoft login. Everything else in the flow is implemented,
+deployed, and verified on the VM.
 
-- [ ] Add a public service function to `src/services/auth.service.ts`, for
-  example `completeExternalLogin(identity: ExternalIdentity):
-  Promise<DevelopmentLoginResult>`. It should upsert the local user by
-  `microsoftOid` through the existing `upsertUserFromIdentity` repository,
-  reject an inactive user with the existing
+**What already works.** `GET /api/v1/auth/login` and
+`GET /api/v1/auth/callback` are implemented in `src/alex/identity/`. A real
+university account can sign in, and the callback verifies the OAuth state,
+exchanges the authorization code, validates the Microsoft token through MSAL,
+checks the tenant, and produces a verified `ExternalIdentity`
+(`{ microsoftOid, email, displayName }`).
+
+**Why it stops there.** Turning that identity into a local user and an
+application JWT means writing to the `users` table, and `AGENTS.md` forbids
+member code from calling repositories or Prisma directly. `auth.service.ts`
+exports only `developmentLogin` and `authenticateAccessToken`, neither of which
+accepts an external identity. So the callback currently answers 501 and echoes
+the resolved identity back, purely so the flow can be verified end to end.
+
+**The exact call site.** In `src/alex/identity/entra.routes.ts`, inside
+`completeMicrosoftLogin`, there is a commented block marked `PENDING`. When the
+service below exists, that block becomes two lines and the 501 disappears.
+
+- [ ] Add a public function to `src/services/auth.service.ts`:
+
+      completeExternalLogin(identity: ExternalIdentity): Promise<LoginResult>
+
+  It should upsert the local user by `microsoftOid` using the existing
+  `upsertUserFromIdentity` repository, reject an inactive user with the existing
   `AuthenticationError("USER_INACTIVE", ...)`, and return the same
   `{ accessToken, tokenType, expiresInSeconds, user }` shape that
-  `developmentLogin` returns.
+  `developmentLogin` already returns. Re-export `ExternalIdentity` from the
+  service layer if you would rather members did not import from
+  `src/providers/**` directly.
 - [ ] Confirm the default role for a first-time university user.
-  `project_description/DEVELOPMENT_LOGIC.md` section 8.2 says `STUDENT`.
-- [ ] Decide whether the login result type should be renamed from
-  `DevelopmentLoginResult`, since Microsoft login will share it.
+  `project_description/DEVELOPMENT_LOGIC.md` section 8.2 says `STUDENT`, and
+  the Prisma default already matches.
+- [ ] Consider renaming `DevelopmentLoginResult`, since Microsoft login will
+  return the same shape and the name will be misleading.
 
-Until this exists, `src/alex/identity/entra.routes.ts` stays a placeholder.
+#### 5.6.1 Two problems that appear as soon as this works
+
+Both were found while deploying and neither is fixable from `src/alex/**`.
+
+**No administrator can exist in production.** `upsertUserFromIdentity` creates
+users with the default role `STUDENT`. Promoting anyone requires an existing
+`ADMIN`, because `updateUserForAdministrator` calls `requireUserAdministrator`.
+The only seeded administrator, `admin@helpdesk.local`, is reachable solely
+through `developmentLogin`, which is disabled when `NODE_ENV=production`. So
+after the production switch there is no path to an administrator through the
+API at all, and the administration endpoints become untestable and
+undemonstrable.
+
+- [ ] Decide how the first administrator is created in production. A documented
+  one-off `UPDATE users SET role = 'ADMIN' WHERE email = '...'` is acceptable
+  and is what the deployment runbook currently describes, but it should be a
+  deliberate decision rather than an accident, and it needs to be written down
+  for the grader.
+
+**A seeded email can break Microsoft login.** `upsertUserFromIdentity` matches
+on `microsoftOid`. If a real university address happens to equal a seeded one,
+the upsert finds no matching `microsoftOid`, tries to *create* a second row with
+an existing `email`, and fails on the unique constraint. The user sees an
+unhandled Prisma error rather than anything meaningful.
+
+- [ ] Decide the desired behaviour when the email already belongs to a
+  different `microsoftOid`: adopt the existing row, fail with a clear
+  `AuthenticationError`, or keep the seeded addresses on a domain that real
+  accounts cannot use. Unlikely with `@helpdesk.local`, but cheap to make
+  explicit while writing 5.6.
 
 ### 5.7 Smaller core observations raised by Alex
 
@@ -253,19 +302,19 @@ Primary source path: `src/alex/**`.
 
 Target: replace `src/alex/secrets/production-secret-provider.ts`.
 
-- [ ] Implement the shared `SecretProvider` contract.
-- [ ] Use Azure managed identity/`DefaultAzureCredential` where possible.
-- [ ] Retrieve production secrets at runtime rather than from `.env`.
-- [ ] Support the agreed Key Vault names for:
+- [x] Implement the shared `SecretProvider` contract.
+- [x] Use Azure managed identity/`DefaultAzureCredential` where possible.
+- [x] Retrieve production secrets at runtime rather than from `.env`.
+- [x] Support the agreed Key Vault names for:
   - database URL;
   - JWT secret;
   - Brevo API key;
   - inbound peer API key;
   - outbound EduCore API key;
   - Entra client secret, only if required by the chosen flow.
-- [ ] Cache safely where appropriate without logging values.
-- [ ] Fail startup clearly if a critical secret cannot be loaded.
-- [ ] Document Azure identity permissions and required secret names.
+- [x] Cache safely where appropriate without logging values.
+- [x] Fail startup clearly if a critical secret cannot be loaded.
+- [x] Document Azure identity permissions and required secret names.
 
 Definition of done:
 
@@ -276,24 +325,27 @@ Definition of done:
 
 Target: replace the placeholders under `src/alex/identity/`.
 
-- [ ] Implement the university Microsoft authorization-code flow using
+- [x] Implement the university Microsoft authorization-code flow using
   OIDC/MSAL/OAuth 2.0.
-- [ ] Implement `GET /api/v1/auth/login`.
-- [ ] Implement `GET /api/v1/auth/callback`.
-- [ ] Validate authentication state, callback data, and Microsoft tokens.
-- [ ] Restrict authentication to the intended university tenant.
-- [ ] Normalize Microsoft `oid`, email, and display name through the shared
+- [x] Implement `GET /api/v1/auth/login`.
+- [x] Implement `GET /api/v1/auth/callback`.
+- [x] Validate authentication state, callback data, and Microsoft tokens.
+- [x] Restrict authentication to the intended university tenant.
+- [x] Normalize Microsoft `oid`, email, and display name through the shared
   identity contract.
 - [ ] Agree with Danila how a first-time university user is provisioned and
   which default local role is assigned.
 - [ ] Coordinate with Danila on the smallest core service needed to upsert or
   resolve the local user.
 - [ ] Issue the existing application JWT after successful Microsoft login.
-- [ ] Keep authorization roles in PostgreSQL rather than trusting Microsoft
+  Blocked on section 5.6; the call site is marked in
+  `src/alex/identity/entra.routes.ts`.
+- [x] Keep authorization roles in PostgreSQL rather than trusting Microsoft
   group claims.
 - [ ] Reject inactive local users even after successful Microsoft login.
-- [ ] Keep development login available outside production.
-- [ ] Document tenant ID, client ID, callback URL, and any required secret name.
+  Belongs to the core service in section 5.6, which already has the check.
+- [x] Keep development login available outside production.
+- [x] Document tenant ID, client ID, callback URL, and any required secret name.
 
 Definition of done:
 
@@ -305,14 +357,14 @@ Definition of done:
 
 Target: replace `src/alex/email/production-email-provider.ts`.
 
-- [ ] Implement the shared `EmailProvider` contract using Brevo's public API.
-- [ ] Retrieve the API key through the configured secret provider.
-- [ ] Create and verify the approved Brevo sender identity.
-- [ ] Return Brevo's provider message ID on success.
-- [ ] Throw a safe error on failure so the existing notification service records
+- [x] Implement the shared `EmailProvider` contract using Brevo's public API.
+- [x] Retrieve the API key through the configured secret provider.
+- [x] Create and verify the approved Brevo sender identity.
+- [x] Return Brevo's provider message ID on success.
+- [x] Throw a safe error on failure so the existing notification service records
   `FAILED` and retries it.
-- [ ] Do not log ticket descriptions, API keys, or authorization headers.
-- [ ] Document required non-secret settings and Key Vault secret name.
+- [x] Do not log ticket descriptions, API keys, or authorization headers.
+- [x] Document required non-secret settings and Key Vault secret name.
 
 Definition of done:
 
@@ -324,22 +376,22 @@ Definition of done:
 
 Primary path: `deploy/alex/**`.
 
-- [ ] Provision the approved hardened Linux VPS, preferably an Azure Linux VM.
-- [ ] Configure managed identity and Key Vault access.
-- [ ] Provision or connect production PostgreSQL with a dedicated application
+- [x] Provision the approved hardened Linux VPS, preferably an Azure Linux VM.
+- [x] Configure managed identity and Key Vault access.
+- [x] Provision or connect production PostgreSQL with a dedicated application
   user.
-- [ ] Keep PostgreSQL private; do not expose its port to the internet.
-- [ ] Create Docker Compose or an automated deployment script.
-- [ ] Run `prisma migrate deploy` as a controlled release step.
-- [ ] Run the application as a non-root user or container.
-- [ ] Configure automatic restart after failure and VM reboot.
-- [ ] Configure Nginx so only `/helpdesk/` is routed to this application.
-- [ ] Preserve existing `/content` and `/api` behavior on the shared server.
-- [ ] Keep the Express application port private.
-- [ ] Configure HTTPS with Let's Encrypt and automatic renewal.
-- [ ] Configure SSH keys, disable root password login, and enable the firewall.
+- [x] Keep PostgreSQL private; do not expose its port to the internet.
+- [x] Create Docker Compose or an automated deployment script.
+- [x] Run `prisma migrate deploy` as a controlled release step.
+- [x] Run the application as a non-root user or container.
+- [x] Configure automatic restart after failure and VM reboot.
+- [x] Configure Nginx so only `/helpdesk/` is routed to this application.
+- [x] Preserve existing `/content` and `/api` behavior on the shared server.
+- [x] Keep the Express application port private.
+- [x] Configure HTTPS with Let's Encrypt and automatic renewal.
+- [x] Configure SSH keys, disable root password login, and enable the firewall.
 - [ ] Enable safe operational logs without secrets or sensitive ticket content.
-- [ ] Write live deployment, migration, rollback, restart, and troubleshooting
+- [x] Write live deployment, migration, rollback, restart, and troubleshooting
   instructions.
 
 Definition of done:

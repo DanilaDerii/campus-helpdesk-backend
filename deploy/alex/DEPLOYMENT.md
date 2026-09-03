@@ -96,7 +96,31 @@ records Brevo supplies. Validating a single sender address instead would require
 a working mailbox at that address, which the domain does not have. Store the v3
 API key as `helpdesk-brevo-api-key`.
 
-### 2.5 The `.env` file on the VM
+### 2.5 Microsoft Entra ID
+
+Register the application in the university tenant:
+
+1. **Microsoft Entra ID, App registrations, New registration.**
+2. Supported account types: **single tenant**. This makes Microsoft itself
+   refuse accounts from other directories, which is stronger than checking in
+   application code.
+3. Redirect URI, platform **Web**, exactly:
+   `https://<domain>/helpdesk/api/v1/auth/callback`
+   This is the public URL. Nginx strips `/helpdesk` before the application sees
+   the request, but Microsoft and the token exchange both use the public form,
+   and the value must match the registration character for character.
+4. From **Overview**, copy the **Application (client) ID** and the
+   **Directory (tenant) ID**.
+5. **Certificates & secrets, New client secret.** Copy the *Value*, which is
+   shown once. Store it in Key Vault as `helpdesk-entra-client-secret`.
+
+No API permissions or admin consent are needed. `openid`, `profile` and `email`
+are sign-in scopes granted implicitly.
+
+The client secret never leaves Key Vault. Only the three non-secret identifiers
+go into `.env`.
+
+### 2.6 The `.env` file on the VM
 
 Non-secret settings only. In production it must contain no secret at all.
 
@@ -107,12 +131,15 @@ KEY_VAULT_URL=https://<vault-name>.vault.azure.net
 BREVO_SENDER_EMAIL=helpdesk@<domain>
 BREVO_SENDER_NAME=Campus HelpDesk
 EDUCORE_BASE_URL=<peer base url>
+ENTRA_TENANT_ID=<directory-id>
+ENTRA_CLIENT_ID=<application-id>
+ENTRA_REDIRECT_URI=https://<domain>/helpdesk/api/v1/auth/callback
 ```
 
 Set it to mode `640`, owned `azureuser:helpdesk`. `deploy.sh` refuses to deploy
 if a production secret appears here while `NODE_ENV=production`.
 
-### 2.6 systemd and Nginx
+### 2.7 systemd and Nginx
 
 ```bash
 sudo cp deploy/alex/helpdesk.service /etc/systemd/system/helpdesk.service
@@ -129,7 +156,7 @@ sudo nginx -t && sudo systemctl reload nginx
 
 `nginx -t` only validates the file. Nothing takes effect until the reload.
 
-### 2.7 First database setup
+### 2.8 First database setup
 
 ```bash
 DATABASE_URL="postgresql://helpdesk:<password>@localhost:5433/helpdesk" npx prisma migrate deploy
@@ -137,6 +164,24 @@ DATABASE_URL="postgresql://helpdesk:<password>@localhost:5433/helpdesk" npm run 
 ```
 
 Seed only a development or demonstration database.
+
+### 2.9 The first administrator
+
+Microsoft sign-in creates users with the default role `STUDENT`, and promoting
+anyone requires an existing administrator. The seeded `admin@helpdesk.local`
+account is reachable only through the development login, which production
+disables. **In a fresh production database there is therefore no administrator
+and no API route to create one.**
+
+Sign in once through Microsoft so the account exists, then promote it directly:
+
+```bash
+sudo docker exec -i $(sudo docker compose ps -q postgres) psql -U helpdesk -d helpdesk -c "UPDATE users SET role = 'ADMIN' WHERE email = '<your-university-address>';"
+```
+
+Every later role change can go through `PATCH /api/v1/users/:userId` as an
+administrator. This bootstrap is an open design question for the backend owner,
+recorded in `todo.md` section 5.6.1.
 
 ---
 
@@ -265,6 +310,35 @@ command.
 `npm ci` deletes and recreates `node_modules` underneath the running process.
 Always restart the service afterwards; `deploy.sh` does this.
 
+### 6.8 Microsoft shows an error page instead of returning to the application
+
+The redirect URI sent by the application does not match the one registered.
+It must be the public HTTPS URL, character for character, with no trailing
+slash. Compare `ENTRA_REDIRECT_URI` in `.env` with the value under
+Authentication in the app registration.
+
+### 6.9 Microsoft login returns 502 MICROSOFT_LOGIN_FAILED
+
+The application deliberately does not surface Microsoft or MSAL internals to
+the caller, so read the journal:
+
+```bash
+journalctl -u helpdesk -n 30 --no-pager
+```
+
+If MSAL reports a scope problem, set `ENTRA_SCOPES=User.Read` in `.env` and
+restart. Some tenants reject a token request carrying only reserved OpenID
+Connect scopes.
+
+If the failure is reading `helpdesk-entra-client-secret`, confirm the secret
+exists and that the client secret was copied rather than the secret ID.
+
+### 6.10 Microsoft login returns 503 MICROSOFT_LOGIN_UNAVAILABLE
+
+Expected outside production: the message names the missing `ENTRA_*` settings.
+The routes are mounted in every environment, and the provider is built lazily
+so a missing configuration answers cleanly instead of preventing startup.
+
 ---
 
 ## 7. Operational notes
@@ -281,3 +355,60 @@ Always restart the service afterwards; `deploy.sh` does this.
   public IP changes and the DNS record and certificate stop matching.
 - **Certificates.** Renewal is handled by `certbot.timer`; check it with
   `systemctl list-timers | grep certbot`.
+- **Firewall.** `ufw` allows only OpenSSH and Nginx Full (22, 80, 443), default
+  deny incoming. Ports 3001 and 5433 are unreachable from outside regardless,
+  because both bind to loopback. Note that Docker writes its own iptables rules
+  and can bypass `ufw` for published ports; that is harmless here only because
+  the database container publishes to `127.0.0.1` rather than `0.0.0.0`. Always
+  allow SSH before enabling `ufw`, and confirm a second session works before
+  closing the first.
+
+---
+
+## 8. Design decisions
+
+Recorded so the reasoning survives, and so the backend owner can see why the
+integration looks the way it does.
+
+**Secrets are fetched through the shared `SecretProvider`, not read from files.**
+`configured-secret-provider.ts` selects the environment provider outside
+production and the Key Vault provider inside it. Business code never learns
+which is in use.
+
+**Vault secret names are mapped, not passed through.** Key Vault names cannot
+contain underscores, so `DATABASE_URL` cannot be a vault name. The map lives in
+`src/alex/secrets/production-secret-provider.ts`; an unmapped name throws rather
+than silently looking up something that does not exist.
+
+**Provider factories are synchronous, and network work is deferred.** The
+configured secret provider and the notification service both build their
+providers at module load and cannot await. Clients are therefore constructed
+synchronously and every secret is fetched on first use, with failed lookups
+evicted from the cache so one transient error cannot disable a subsystem for the
+lifetime of the process.
+
+**The application runs under systemd rather than in a container.** Managed
+identity reaches Azure IMDS natively on the host, which removes a class of
+container networking problems from the most security-sensitive path. PostgreSQL
+stays containerised because it has no such requirement.
+
+**OAuth state is a signed token, not session data.** The application has no
+session store and adding cookie middleware would mean changing core files owned
+by the backend owner. A short-lived signed value is stateless, survives a
+restart mid-login, and adds no dependency. A distinct audience keeps these
+tokens from being usable as access tokens.
+
+**Microsoft proves identity; PostgreSQL decides authorization.** No role or group
+claim from Microsoft is trusted. The `tid` claim is still compared against the
+configured tenant as defence in depth, so a registration accidentally switched to
+multi-tenant does not quietly widen access.
+
+**Email failures are thrown, not absorbed.** The notification service already
+records `FAILED` and retries, so the provider surfaces errors rather than
+swallowing them. Note that `SENT` means Brevo accepted the request; Brevo can
+still reject asynchronously, and its event log is the authority on delivery.
+
+**Dependencies added to `package.json`,** which is outside `src/alex/**` and
+needs the backend owner's review: `@azure/identity` and
+`@azure/keyvault-secrets` for Key Vault, and `@azure/msal-node` for the
+authorization-code flow. Brevo needed none, since `fetch` is built in.
