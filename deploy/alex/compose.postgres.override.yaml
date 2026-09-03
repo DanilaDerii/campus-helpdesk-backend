@@ -1,0 +1,32 @@
+# Production overrides for the PostgreSQL container.
+#
+# This is an OVERRIDE layered on the repository's root compose.yaml, not a
+# replacement. Using it as an override keeps the backend owner's file the single
+# source of truth for the service definition and, importantly, keeps the same
+# Compose project and data volume so no database contents are orphaned.
+#
+# Start or update PostgreSQL on the VM with:
+#   cd /opt/campus-helpdesk
+#   docker compose -f compose.yaml -f deploy/alex/compose.postgres.override.yaml up -d postgres
+#
+# What this adds on top of the base definition:
+#   - restart: unless-stopped, so the database returns after a VM reboot.
+#     The base file sets no restart policy, which means that after a reboot the
+#     container stays down and helpdesk.service restart-loops against a database
+#     that is not there.
+#   - a memory cap matching MemoryMax in helpdesk.service, so neither service can
+#     exhaust the VM.
+#
+# Note on the password: PostgreSQL only applies POSTGRES_PASSWORD when it
+# initialises an empty data directory. Changing this value against an existing
+# volume does NOT rotate the password. To rotate, change it inside the running
+# database (ALTER USER) and update the connection string stored in Key Vault to
+# match.
+
+services:
+  postgres:
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-helpdesk_dev}

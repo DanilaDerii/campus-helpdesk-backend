@@ -1,0 +1,47 @@
+# Campus HelpDesk API service unit.
+#
+# Verified running on the project VM (Ubuntu 24.04, Node 22).
+#
+# Install:
+#   sudo cp deploy/alex/helpdesk.service /etc/systemd/system/helpdesk.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now helpdesk
+#
+# Requires:
+#   - the repository checked out at /opt/campus-helpdesk and built (npm ci && npm run build);
+#   - a dedicated non-root service account:
+#       sudo useradd --system --no-create-home --shell /usr/sbin/nologin helpdesk
+#       sudo chown -R helpdesk:helpdesk /opt/campus-helpdesk
+#   - /opt/campus-helpdesk/.env holding NON-SECRET settings only.
+#     Production secrets are fetched at runtime through the SecretProvider.
+
+[Unit]
+Description=Campus HelpDesk API
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=helpdesk
+Group=helpdesk
+WorkingDirectory=/opt/campus-helpdesk
+EnvironmentFile=/opt/campus-helpdesk/.env
+ExecStart=/usr/bin/node dist/src/server.js
+
+# Survive crashes and reboots.
+Restart=always
+RestartSec=3
+
+# Guard rail: matches the cap applied to the PostgreSQL container so neither
+# service can exhaust the VM. Observed steady-state usage is about 60 MB.
+MemoryMax=512M
+
+# Hardening.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/campus-helpdesk
+
+[Install]
+WantedBy=multi-user.target
