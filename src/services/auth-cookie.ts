@@ -10,7 +10,17 @@ function cookieOptions(): CookieOptions {
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    // Lax, not Strict. The session cookie is set on the Microsoft callback and
+    // the browser is then redirected to the success path. Browsers evaluate
+    // SameSite across the whole navigation chain, so a Strict cookie is
+    // withheld on the hop immediately after a cross-site-initiated navigation
+    // and the user lands on the success page unauthenticated.
+    //
+    // This does not weaken CSRF protection: requireAuthentication calls
+    // requireSameOriginRequest whenever the token came from a cookie, which
+    // rejects any state-changing request without a matching Origin. Lax also
+    // still withholds the cookie from cross-site non-GET requests.
+    sameSite: "lax",
     path: publicBasePath(),
   };
 }

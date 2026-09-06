@@ -65,8 +65,14 @@ approved live verification. The first real administrator needs controlled
 provisioning; do not seed development users into production or enable public
 development login.
 
-The callback stores the HelpDesk JWT in a `Secure`, `HttpOnly`, `SameSite=Strict`
-cookie scoped to `/helpdesk`, then redirects to `/helpdesk/api/v1/me`. After the
+The callback stores the HelpDesk JWT in a `Secure`, `HttpOnly`, `SameSite=Lax`
+cookie scoped to `/helpdesk`, then redirects to `/helpdesk/api/v1/me`. Lax is
+required rather than preferred: browsers evaluate SameSite across the whole
+navigation chain, so a Strict cookie is withheld on the hop immediately after
+the cross-site return from Microsoft and the user arrives unauthenticated.
+Verified live: with Strict the success page rejected the request and only a
+manual reload worked; with Lax the sign-in completes in one pass. CSRF cover
+comes from the origin check described below, not from the SameSite value. After the
 frontend is deployed, change only that success destination to the frontend root.
 Cookie-authenticated state changes require the public origin reported through the
 trusted loopback Nginx proxy. `POST /helpdesk/api/v1/auth/logout` clears the cookie.
@@ -75,9 +81,12 @@ trusted loopback Nginx proxy. `POST /helpdesk/api/v1/auth/logout` clears the coo
 
 Commands below are for an approved deployment; they have not been run for this cleanup.
 
-1. Supply production PostgreSQL credentials before initializing a fresh volume.
-   The current Compose override still falls back to a development password: this
-   is a release blocker. Changing `POSTGRES_PASSWORD` does not rotate an existing DB.
+1. PostgreSQL credentials for a fresh volume are handled by `deploy.sh`, which
+   derives `POSTGRES_PASSWORD` from the same `helpdesk-database-url` the
+   application uses, so the Compose override cannot fall back to its development
+   default while the application authenticates with the vault value. The default
+   in that file now applies only to a manual run without the script. Changing
+   `POSTGRES_PASSWORD` still does not rotate an existing database.
 2. Start PostgreSQL with both Compose files. Install dependencies, generate Prisma,
    compile, and apply committed migrations using a database URL retrieved securely
    from Key Vault. Prisma CLI reads `DATABASE_URL`; it cannot use the runtime provider.
@@ -114,9 +123,15 @@ DB, installs/builds, migrates and restarts. Review before production use:
 
 - It replaces dependencies beneath the running process; separate release directories
   are still needed. Build failure must leave the previous release usable.
-- Public health failure is currently printed but does not fail deployment.
-- `/health` checks the process and `/ready` checks PostgreSQL. The deployment
-  script still needs to make readiness failure stop the release.
+- Public health failure now fails the deployment instead of printing a note.
+- `/health` checks the process and `/ready` checks PostgreSQL. The script calls
+  `/ready` and stops the release when it fails, so a database that did not come
+  back after a reboot can no longer pass as a healthy deployment.
+- Non-secret settings are read from the application's own `.env` before falling
+  back to defaults, so the script cannot deploy against a different Key Vault or
+  health-check a different port than the running service uses.
+- Rollback works: the script fast-forwards only when HEAD is on a branch, so
+  deploying a pinned commit no longer aborts on a detached HEAD.
 - Apply both new migrations before running the updated application. The ticket
   schema cleanup removes the obsolete `source` field; ticket records are preserved.
   Existing pending/failed records start with a fresh five-attempt budget; sent
