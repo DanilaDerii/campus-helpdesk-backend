@@ -13,15 +13,31 @@
 
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/opt/campus-helpdesk}"
-VAULT_URL="${KEY_VAULT_URL:-https://jesoas-helpdesk-kv.vault.azure.net}"
-SERVICE="${SERVICE:-helpdesk}"
-PORT="${PORT:-3001}"
-PUBLIC_HEALTH_URL="${PUBLIC_HEALTH_URL:-https://jesoas.org/helpdesk/health}"
-GIT_REF="${1:-}"
-
 log()  { printf '\n==> %s\n' "$*"; }
 fail() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+
+APP_DIR="${APP_DIR:-/opt/campus-helpdesk}"
+SERVICE="${SERVICE:-helpdesk}"
+GIT_REF="${1:-}"
+
+# Read one non-secret setting out of the application's own .env.
+#
+# This matters: the application reads .env on the VM. If this script relied on
+# its own built-in defaults it could deploy against a different Key Vault, or
+# health-check a different port, than the service actually uses. Settings
+# resolve as exported shell variable, then .env, then a safe default. Secrets
+# are never read from here; they still come from Key Vault.
+env_file_value() {
+  [ -f "$APP_DIR/.env" ] || return 0
+  sed -n "s/^[[:space:]]*$1=//p" "$APP_DIR/.env" | tail -n 1 | sed 's/^"//; s/"$//'
+}
+
+VAULT_URL="${KEY_VAULT_URL:-$(env_file_value KEY_VAULT_URL)}"
+PORT="${PORT:-$(env_file_value PORT)}"
+PORT="${PORT:-3001}"
+PUBLIC_HEALTH_URL="${PUBLIC_HEALTH_URL:-$(env_file_value PUBLIC_HEALTH_URL)}"
+
+[ -n "$VAULT_URL" ] || fail "KEY_VAULT_URL is set neither in the environment nor in $APP_DIR/.env"
 
 # --- Preconditions ---------------------------------------------------------
 [ -d "$APP_DIR/.git" ] || fail "$APP_DIR is not a git checkout"
@@ -56,7 +72,15 @@ git fetch --prune
 if [ -n "$GIT_REF" ]; then
   git checkout "$GIT_REF"
 fi
-git pull --ff-only
+
+# Only fast-forward when HEAD is on a branch. Checking out a commit, which is
+# exactly what the documented rollback does, leaves a detached HEAD where
+# "git pull" fails and would otherwise abort the whole deployment.
+if git symbolic-ref -q HEAD >/dev/null; then
+  git pull --ff-only
+else
+  echo "Detached HEAD: deploying a pinned commit, skipping pull."
+fi
 git --no-pager log --oneline -1
 
 # --- Secrets ---------------------------------------------------------------
@@ -66,8 +90,20 @@ DATABASE_URL="$(vault_secret helpdesk-database-url)"
 echo "ok (value not shown)"
 
 # --- Database --------------------------------------------------------------
+# Derive the container password from the same connection string the application
+# uses, so deployment settings cannot drift from application settings. Without
+# this the Compose override falls back to its development default while the
+# application authenticates with whatever the vault holds.
+#
+# PostgreSQL applies this only when initialising an empty data directory, so it
+# keeps new deployments consistent rather than rotating an existing one. A real
+# mismatch surfaces loudly at the migration step below.
+POSTGRES_PASSWORD="$(python3 -c 'import sys,urllib.parse as u; print(u.unquote(u.urlparse(sys.argv[1]).password or ""))' "$DATABASE_URL")"
+[ -n "$POSTGRES_PASSWORD" ] || fail "helpdesk-database-url has no password component"
+export POSTGRES_PASSWORD
+
 log "Ensuring PostgreSQL is running"
-sudo docker compose -f compose.yaml -f deploy/alex/compose.postgres.override.yaml up -d postgres
+sudo -E docker compose -f compose.yaml -f deploy/alex/compose.postgres.override.yaml up -d postgres
 
 # --- Build -----------------------------------------------------------------
 log "Installing dependencies"
@@ -95,10 +131,26 @@ for attempt in $(seq 1 10); do
 done
 
 echo "local  /health : $(curl -fsS "http://127.0.0.1:${PORT}/health")"
-echo "public /health : $(curl -fsS --max-time 10 "$PUBLIC_HEALTH_URL" || echo 'UNREACHABLE - check nginx')"
 echo "service        : $(systemctl is-active "$SERVICE")"
-echo "database       : $(sudo docker inspect -f '{{.State.Status}}' "$(sudo docker compose ps -q postgres)")"
+
+# /health answers without touching PostgreSQL, so a green health check says
+# nothing about the database. /ready runs a real query, which is what catches a
+# database that did not come back after a reboot.
+if ! curl -fsS --max-time 10 "http://127.0.0.1:${PORT}/ready" >/dev/null; then
+  fail "The service is up but /ready failed, so the database is not reachable. Check: journalctl --namespace=helpdesk -u $SERVICE -n 30 --no-pager"
+fi
+echo "local  /ready  : ok (database reachable)"
+
+# A failed public check is a failed deployment, not a footnote. Announcing
+# success while the public URL is down is exactly how a broken release ships.
+if [ -n "$PUBLIC_HEALTH_URL" ]; then
+  if curl -fsS --max-time 10 "$PUBLIC_HEALTH_URL" >/dev/null; then
+    echo "public /health : ok"
+  else
+    fail "Public health check failed at $PUBLIC_HEALTH_URL while the service is healthy locally. Check Nginx and DNS."
+  fi
+else
+  echo "public /health : skipped (set PUBLIC_HEALTH_URL in the environment or .env)"
+fi
 
 log "Deployment complete"
-echo "Note: /health does not test the database. Confirm the journal is free of"
-echo "connection errors:  journalctl --namespace=helpdesk -u $SERVICE -n 20 --no-pager"
