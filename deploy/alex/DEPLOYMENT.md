@@ -3,6 +3,7 @@
 Owner: Alex. Target: Azure Linux VM with Nginx, systemd and PostgreSQL in Compose.
 These are repository instructions, not proof of the current VM state.
 Remaining release blockers: [todo.md](../../todo.md).
+Live demonstration run order: [DEMO.md](DEMO.md).
 
 ## Runtime layout
 
