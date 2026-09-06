@@ -8,7 +8,6 @@ import { configuredSecretProvider } from "../../providers/secrets/configured-sec
 const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
 const BREVO_API_KEY_SECRET = "BREVO_API_KEY";
 const REQUEST_TIMEOUT_MS = 10_000;
-const MAXIMUM_ERROR_DETAIL = 300;
 
 interface BrevoSender {
   email: string;
@@ -75,15 +74,10 @@ class BrevoEmailProvider implements EmailProvider {
       });
 
       if (!response.ok) {
-        // Brevo error bodies describe the rejection (for example an
-        // unverified sender) and never echo the API key. Truncated so a large
-        // response cannot flood the notification error column or the log.
-        const detail = await response.text().catch(() => "");
-        throw new Error(
-          `Brevo responded ${response.status}${
-            detail ? `: ${detail.slice(0, MAXIMUM_ERROR_DETAIL)}` : ""
-          }`,
-        );
+        await response.body?.cancel();
+        throw Object.assign(new Error("Brevo rejected the email request"), {
+          statusCode: response.status,
+        });
       }
 
       const payload = (await response.json().catch(() => ({}))) as BrevoResponse;

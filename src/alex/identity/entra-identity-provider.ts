@@ -22,6 +22,7 @@ export interface EntraConfiguration {
 
 export interface EntraCallback {
   code: string;
+  codeVerifier: string;
 }
 
 export class EntraNotConfiguredError extends Error {
@@ -113,13 +114,18 @@ export class EntraIdentityProvider implements IdentityProvider {
   }
 
   /** The Microsoft sign-in URL to redirect the browser to. */
-  async getAuthorizationUrl(state: string): Promise<string> {
+  async getAuthorizationUrl(
+    state: string,
+    codeChallenge: string,
+  ): Promise<string> {
     const client = await this.getClient();
 
     return client.getAuthCodeUrl({
       scopes: this.configuration.scopes,
       redirectUri: this.configuration.redirectUri,
       state,
+      codeChallenge,
+      codeChallengeMethod: "S256",
     });
   }
 
@@ -133,9 +139,14 @@ export class EntraIdentityProvider implements IdentityProvider {
       typeof input !== "object" ||
       input === null ||
       !("code" in input) ||
-      typeof (input as { code: unknown }).code !== "string"
+      typeof input.code !== "string" ||
+      !("codeVerifier" in input) ||
+      typeof input.codeVerifier !== "string" ||
+      input.codeVerifier === ""
     ) {
-      throw new Error("Microsoft login requires an authorization code");
+      throw new Error(
+        "Microsoft login requires an authorization code and PKCE verifier",
+      );
     }
 
     const client = await this.getClient();
@@ -143,6 +154,7 @@ export class EntraIdentityProvider implements IdentityProvider {
       code: (input as EntraCallback).code,
       scopes: this.configuration.scopes,
       redirectUri: this.configuration.redirectUri,
+      codeVerifier: (input as EntraCallback).codeVerifier,
     });
 
     const claims = (result.idTokenClaims ?? {}) as EntraIdTokenClaims;
@@ -150,7 +162,7 @@ export class EntraIdentityProvider implements IdentityProvider {
     // Defence in depth: the application is registered single-tenant, so
     // Microsoft already refuses other directories, but do not rely on that
     // registration staying single-tenant.
-    if (claims.tid && claims.tid !== this.configuration.tenantId) {
+    if (claims.tid !== this.configuration.tenantId) {
       throw new Error("This account belongs to a different directory");
     }
 

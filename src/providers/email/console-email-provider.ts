@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { logEvent } from "../../logging/logger.js";
 import type {
   EmailMessage,
   EmailProvider,
@@ -7,13 +8,10 @@ import type {
 
 /** Development provider that exercises delivery without contacting a real API. */
 export class ConsoleEmailProvider implements EmailProvider {
-  async send(message: EmailMessage): Promise<EmailResult> {
+  async send(_message: EmailMessage): Promise<EmailResult> {
     const providerMessageId = `console-${randomUUID()}`;
 
-    // Do not print the message body because ticket text may be sensitive.
-    console.log(
-      `[email:console] id=${providerMessageId} to=${message.to} subject=${message.subject}`,
-    );
+    logEvent("debug", "development_email_accepted", { operation: "email_delivery" });
 
     return { providerMessageId };
   }

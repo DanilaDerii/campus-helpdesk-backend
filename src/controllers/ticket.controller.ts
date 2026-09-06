@@ -13,6 +13,7 @@ import {
   getTicketForUser,
   getTicketHistoryForUser,
   listTicketsForUser,
+  type CreateTicketInput,
 } from "../services/ticket.service.js";
 import {
   readEnumValue,
@@ -23,15 +24,7 @@ import {
   requireAuthenticatedUser,
 } from "../validation/request-validation.js";
 
-interface TicketRequestBody {
-  categoryId: number;
-  title: string;
-  description: string;
-  location: string;
-  priority?: TicketPriority;
-}
-
-function readTicketBody(body: unknown): TicketRequestBody {
+function readTicketBody(body: unknown): CreateTicketInput {
   const requestBody = readRequestObject(body);
   const priorityValues = Object.values(TicketPriority);
   const priority =

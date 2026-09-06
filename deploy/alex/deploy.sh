@@ -90,7 +90,7 @@ for attempt in $(seq 1 10); do
   if curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
     break
   fi
-  [ "$attempt" -eq 10 ] && fail "The service did not answer on port $PORT. Check: journalctl -u $SERVICE -n 50"
+  [ "$attempt" -eq 10 ] && fail "The service did not answer on port $PORT. Check: journalctl --namespace=helpdesk -u $SERVICE -n 50"
   sleep 1
 done
 
@@ -101,4 +101,4 @@ echo "database       : $(sudo docker inspect -f '{{.State.Status}}' "$(sudo dock
 
 log "Deployment complete"
 echo "Note: /health does not test the database. Confirm the journal is free of"
-echo "connection errors:  journalctl -u $SERVICE -n 20 --no-pager"
+echo "connection errors:  journalctl --namespace=helpdesk -u $SERVICE -n 20 --no-pager"

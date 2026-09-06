@@ -28,5 +28,10 @@ services:
     restart: unless-stopped
     mem_limit: 512m
     memswap_limit: 512m
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-helpdesk_dev}

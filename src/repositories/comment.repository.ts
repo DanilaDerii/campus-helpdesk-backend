@@ -1,11 +1,5 @@
 import { prisma, type DatabaseClient } from "../database/prisma.js";
-
-const safeAuthorSelection = {
-  id: true,
-  email: true,
-  displayName: true,
-  role: true,
-} as const;
+import { safeUserSelection } from "./user-selection.js";
 
 export function createTicketComment(
   ticketId: number,
@@ -15,7 +9,7 @@ export function createTicketComment(
 ) {
   return database.ticketComment.create({
     data: { ticketId, authorId, message },
-    include: { author: { select: safeAuthorSelection } },
+    include: { author: { select: safeUserSelection } },
   });
 }
 
@@ -25,7 +19,7 @@ export function listTicketComments(
 ) {
   return database.ticketComment.findMany({
     where: { ticketId },
-    include: { author: { select: safeAuthorSelection } },
+    include: { author: { select: safeUserSelection } },
     orderBy: { createdAt: "asc" },
   });
 }

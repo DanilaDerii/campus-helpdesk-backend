@@ -1,6 +1,6 @@
 # Campus HelpDesk API service unit.
 #
-# Verified running on the project VM (Ubuntu 24.04, Node 22).
+# Target: Ubuntu 24.04. Install the HelpDesk journal retention drop-in first.
 #
 # Install:
 #   sudo cp deploy/alex/helpdesk.service /etc/systemd/system/helpdesk.service
@@ -8,10 +8,11 @@
 #   sudo systemctl enable --now helpdesk
 #
 # Requires:
-#   - the repository checked out at /opt/campus-helpdesk and built (npm ci && npm run build);
+#   - the repository checked out and built at /opt/campus-helpdesk;
 #   - a dedicated non-root service account:
 #       sudo useradd --system --no-create-home --shell /usr/sbin/nologin helpdesk
-#       sudo chown -R helpdesk:helpdesk /opt/campus-helpdesk
+#       sudo chown -R azureuser:helpdesk /opt/campus-helpdesk
+#       sudo chmod -R g+rX /opt/campus-helpdesk
 #   - /opt/campus-helpdesk/.env holding NON-SECRET settings only.
 #     Production secrets are fetched at runtime through the SecretProvider.
 
@@ -27,13 +28,15 @@ Group=helpdesk
 WorkingDirectory=/opt/campus-helpdesk
 EnvironmentFile=/opt/campus-helpdesk/.env
 ExecStart=/usr/bin/node dist/src/server.js
+LogNamespace=helpdesk
+StandardOutput=journal
+StandardError=journal
 
 # Survive crashes and reboots.
 Restart=always
 RestartSec=3
 
-# Guard rail: matches the cap applied to the PostgreSQL container so neither
-# service can exhaust the VM. Observed steady-state usage is about 60 MB.
+# Cap memory independently from PostgreSQL.
 MemoryMax=512M
 
 # Hardening.

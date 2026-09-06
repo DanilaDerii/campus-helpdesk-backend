@@ -1,0 +1,17 @@
+/var/log/helpdesk-nginx/access.log {
+    daily
+    rotate 14
+    maxage 14
+    maxsize 10M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0640 www-data adm
+    sharedscripts
+    postrotate
+        if [ -s /run/nginx.pid ]; then
+            /usr/sbin/nginx -s reopen
+        fi
+    endscript
+}

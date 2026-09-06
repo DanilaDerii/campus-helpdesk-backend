@@ -9,15 +9,8 @@ import { requireAuthentication } from "../middleware/require-authentication.js";
 
 export const categoryRoutes = Router();
 
-categoryRoutes.get("/", requireAuthentication, listCategoriesController);
-categoryRoutes.post("/", requireAuthentication, createCategoryController);
-categoryRoutes.patch(
-  "/:categoryId",
-  requireAuthentication,
-  updateCategoryController,
-);
-categoryRoutes.delete(
-  "/:categoryId",
-  requireAuthentication,
-  deleteCategoryController,
-);
+categoryRoutes.use(requireAuthentication);
+categoryRoutes.get("/", listCategoriesController);
+categoryRoutes.post("/", createCategoryController);
+categoryRoutes.patch("/:categoryId", updateCategoryController);
+categoryRoutes.delete("/:categoryId", deleteCategoryController);

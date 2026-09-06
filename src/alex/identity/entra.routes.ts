@@ -2,19 +2,76 @@ import { Router, type RequestHandler } from "express";
 import { HttpError } from "../../errors/http-error.js";
 import type { ExternalIdentity } from "../../providers/identity/identity-provider.js";
 import {
+  AuthenticationError,
+  completeExternalLogin,
+} from "../../services/auth.service.js";
+import {
   EntraNotConfiguredError,
   getEntraIdentityProvider,
 } from "./entra-identity-provider.js";
 import {
-  createLoginState,
+  createLoginTransaction,
   InvalidLoginStateError,
   verifyLoginState,
 } from "./login-state.js";
 
 export const alexAuthRoutes = Router();
 
-function toHttpError(error: unknown): HttpError {
-  if (error instanceof HttpError) {
+const LOGIN_COOKIE = "helpdesk_login";
+const LOGIN_COOKIE_LIFETIME_MS = 10 * 60 * 1000;
+
+interface BrowserLoginTransaction {
+  state: string;
+  codeVerifier: string;
+}
+
+const loginCookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+};
+
+function encodeLoginCookie(transaction: BrowserLoginTransaction): string {
+  return Buffer.from(JSON.stringify({
+    state: transaction.state,
+    codeVerifier: transaction.codeVerifier,
+  })).toString("base64url");
+}
+
+function readLoginCookie(cookieHeader: string | undefined): BrowserLoginTransaction {
+  const encodedValue = cookieHeader
+    ?.split(";")
+    .map((part) => part.trim().split("="))
+    .find(([name]) => name === LOGIN_COOKIE)
+    ?.slice(1)
+    .join("=");
+
+  if (!encodedValue) {
+    throw new InvalidLoginStateError();
+  }
+
+  try {
+    const value = JSON.parse(
+      Buffer.from(decodeURIComponent(encodedValue), "base64url").toString(),
+    ) as Partial<BrowserLoginTransaction>;
+
+    if (
+      typeof value.state !== "string" ||
+      typeof value.codeVerifier !== "string" ||
+      value.codeVerifier === ""
+    ) {
+      throw new InvalidLoginStateError();
+    }
+
+    return { state: value.state, codeVerifier: value.codeVerifier };
+  } catch {
+    throw new InvalidLoginStateError();
+  }
+}
+
+function toRouteError(error: unknown): HttpError | AuthenticationError {
+  if (error instanceof HttpError || error instanceof AuthenticationError) {
     return error;
   }
 
@@ -34,6 +91,7 @@ function toHttpError(error: unknown): HttpError {
     502,
     "MICROSOFT_LOGIN_FAILED",
     "Microsoft login could not be completed",
+    { cause: error },
   );
 }
 
@@ -41,13 +99,20 @@ function toHttpError(error: unknown): HttpError {
 const startMicrosoftLogin: RequestHandler = async (_request, response, next) => {
   try {
     const provider = getEntraIdentityProvider();
-    const state = await createLoginState();
-    response.redirect(await provider.getAuthorizationUrl(state));
+    const transaction = await createLoginTransaction();
+    const authorizationUrl = await provider.getAuthorizationUrl(
+      transaction.state,
+      transaction.codeChallenge,
+    );
+
+    response.cookie(
+      LOGIN_COOKIE,
+      encodeLoginCookie(transaction),
+      { ...loginCookieOptions, maxAge: LOGIN_COOKIE_LIFETIME_MS },
+    );
+    response.redirect(authorizationUrl);
   } catch (error: unknown) {
-    if (!(error instanceof EntraNotConfiguredError)) {
-      console.error("Microsoft login could not be started", error);
-    }
-    next(toHttpError(error));
+    next(toRouteError(error));
   }
 };
 
@@ -58,6 +123,10 @@ const completeMicrosoftLogin: RequestHandler = async (
   next,
 ) => {
   try {
+    const transaction = readLoginCookie(request.get("cookie"));
+    await verifyLoginState(request.query.state, transaction.state);
+    response.clearCookie(LOGIN_COOKIE, loginCookieOptions);
+
     // Microsoft reports consent and sign-in failures on the redirect itself.
     if (typeof request.query.error === "string") {
       throw new HttpError(
@@ -66,8 +135,6 @@ const completeMicrosoftLogin: RequestHandler = async (
         "Microsoft did not complete the sign-in",
       );
     }
-
-    await verifyLoginState(request.query.state);
 
     const code = request.query.code;
     if (typeof code !== "string" || code === "") {
@@ -78,40 +145,24 @@ const completeMicrosoftLogin: RequestHandler = async (
       );
     }
 
-    const identity: ExternalIdentity = await getEntraIdentityProvider()
-      .completeLogin({ code });
+    let identity: ExternalIdentity;
 
-    // ---------------------------------------------------------------------
-    // PENDING: the core must turn this verified identity into a local user
-    // and an application JWT. See todo.md section 5.6. Member code must not
-    // touch repositories directly, so this is the one call site waiting on
-    // the backend owner:
-    //
-    //   const result = await completeExternalLogin(identity);
-    //   response.status(200).json(result);
-    //
-    // Until then the resolved identity is echoed back to the person who just
-    // authenticated as it, which makes the flow verifiable end to end without
-    // exposing anything they do not already know about themselves.
-    // ---------------------------------------------------------------------
-    response.status(501).json({
-      status: "not_implemented",
-      operation:
-        "Issue an application JWT for a verified Microsoft identity (todo.md 5.6)",
-      identity: {
-        email: identity.email,
-        displayName: identity.displayName,
-      },
-    });
-  } catch (error: unknown) {
-    if (
-      !(error instanceof HttpError) &&
-      !(error instanceof InvalidLoginStateError) &&
-      !(error instanceof EntraNotConfiguredError)
-    ) {
-      console.error("Microsoft login callback failed", error);
+    try {
+      identity = await getEntraIdentityProvider().completeLogin({
+        code,
+        codeVerifier: transaction.codeVerifier,
+      });
+    } catch (error: unknown) {
+      throw toRouteError(error);
     }
-    next(toHttpError(error));
+
+    response.status(200).json(await completeExternalLogin(identity));
+  } catch (error: unknown) {
+    next(
+      error instanceof InvalidLoginStateError
+        ? toRouteError(error)
+        : error,
+    );
   }
 };
 

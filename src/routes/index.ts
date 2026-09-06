@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { alexAuthRoutes } from "../alex/identity/index.js";
-import { andreiPeerRoutes } from "../andrei/peer/index.js";
 import { authRoutes } from "./auth.routes.js";
 import { categoryRoutes } from "./categories.routes.js";
 import { ticketRoutes } from "./tickets.routes.js";
@@ -13,6 +12,3 @@ apiRoutes.use("/api/v1", authRoutes);
 apiRoutes.use("/api/v1/categories", categoryRoutes);
 apiRoutes.use("/api/v1/tickets", ticketRoutes);
 apiRoutes.use("/api/v1/users", userRoutes);
-
-// The peer API uses x-api-key authentication, not a user JWT.
-apiRoutes.use("/peer", andreiPeerRoutes);

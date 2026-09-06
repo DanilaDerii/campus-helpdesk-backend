@@ -1,11 +1,13 @@
 import express from "express";
 import { errorHandler } from "./errors/error-handler.js";
+import { requestContext } from "./middleware/request-context.js";
 import { apiRoutes } from "./routes/index.js";
 
 export function createApp() {
   const app = express();
 
   app.disable("x-powered-by");
+  app.use(requestContext);
   app.use(express.json());
 
   app.get("/health", (_request, response) => {

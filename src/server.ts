@@ -1,5 +1,6 @@
 import { createApp } from "./app.js";
 import { disconnectDatabase } from "./database/prisma.js";
+import { logEvent, safeErrorDetails } from "./logging/logger.js";
 import { startNotificationRetryWorker } from "./services/notification.service.js";
 
 const port = Number(process.env.PORT ?? 3000);
@@ -9,12 +10,14 @@ const server = app.listen(port);
 let stopNotificationRetryWorker = () => {};
 
 server.on("listening", () => {
-  console.log(`Campus HelpDesk listening on port ${port}`);
+  logEvent("info", "server_listening", { operation: "startup", port });
   stopNotificationRetryWorker = startNotificationRetryWorker();
 });
 
 server.on("error", (error: NodeJS.ErrnoException) => {
-  console.error(`Campus HelpDesk failed to start: ${error.message}`);
+  logEvent("error", "server_start_failed", {
+    operation: "startup", ...safeErrorDetails(error),
+  });
   process.exitCode = 1;
 });
 
@@ -27,7 +30,7 @@ function shutDown(signal: NodeJS.Signals) {
 
   isShuttingDown = true;
   stopNotificationRetryWorker();
-  console.log(`Received ${signal}; shutting down Campus HelpDesk`);
+  logEvent("info", "server_stopping", { operation: "shutdown", signal });
 
   server.close(() => {
     void disconnectDatabase()
@@ -35,7 +38,9 @@ function shutDown(signal: NodeJS.Signals) {
         process.exit(0);
       })
       .catch((error: unknown) => {
-        console.error("Failed to close the database connection", error);
+        logEvent("error", "database_close_failed", {
+          operation: "shutdown", ...safeErrorDetails(error),
+        });
         process.exit(1);
       });
   });

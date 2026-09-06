@@ -14,36 +14,13 @@ import { requireAuthentication } from "../middleware/require-authentication.js";
 
 export const ticketRoutes = Router();
 
-ticketRoutes.post("/", requireAuthentication, createTicketController);
-ticketRoutes.get("/", requireAuthentication, listTicketsController);
-ticketRoutes.get("/:ticketId", requireAuthentication, getTicketController);
-ticketRoutes.post(
-  "/:ticketId/claim",
-  requireAuthentication,
-  claimTicketController,
-);
-ticketRoutes.patch(
-  "/:ticketId/status",
-  requireAuthentication,
-  updateTicketStatusController,
-);
-ticketRoutes.patch(
-  "/:ticketId/assignment",
-  requireAuthentication,
-  assignTicketController,
-);
-ticketRoutes.post(
-  "/:ticketId/comments",
-  requireAuthentication,
-  addTicketCommentController,
-);
-ticketRoutes.get(
-  "/:ticketId/comments",
-  requireAuthentication,
-  listTicketCommentsController,
-);
-ticketRoutes.get(
-  "/:ticketId/history",
-  requireAuthentication,
-  listTicketHistoryController,
-);
+ticketRoutes.use(requireAuthentication);
+ticketRoutes.post("/", createTicketController);
+ticketRoutes.get("/", listTicketsController);
+ticketRoutes.get("/:ticketId", getTicketController);
+ticketRoutes.post("/:ticketId/claim", claimTicketController);
+ticketRoutes.patch("/:ticketId/status", updateTicketStatusController);
+ticketRoutes.patch("/:ticketId/assignment", assignTicketController);
+ticketRoutes.post("/:ticketId/comments", addTicketCommentController);
+ticketRoutes.get("/:ticketId/comments", listTicketCommentsController);
+ticketRoutes.get("/:ticketId/history", listTicketHistoryController);

@@ -1,14 +1,12 @@
 # Campus HelpDesk ownership rules
 
-Keep the standalone backend independent from production service providers and
-the EduCore peer application.
+Keep the standalone backend independent from production service providers.
 
 ## Ownership
 
 - The backend owner maintains the application core outside the member-owned
   paths listed below.
 - Alex owns `src/alex/**` and `deploy/alex/**`.
-- Andrei owns `src/andrei/**`.
 - Shared contracts remain under `src/providers/**` and are changed only after
   agreeing the contract with the backend owner.
 

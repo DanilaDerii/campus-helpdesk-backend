@@ -1,10 +1,9 @@
 import {
   Role,
   TicketPriority,
-  TicketSource,
   TicketStatus,
 } from "../../../generated/prisma/client.js";
-import { runInTransaction } from "../../database/prisma.js";
+import { runInTransaction, type DatabaseClient } from "../../database/prisma.js";
 import {
   assignTechnician,
   claimOpenTicket,
@@ -12,6 +11,7 @@ import {
   createTicketHistory,
   createTicketRecord,
   findCategoryById,
+  findTicketAccessRecordById,
   findTicketById,
   findUserById,
   transitionTicketStatus,
@@ -32,6 +32,16 @@ export interface CreateTicketInput {
   description: string;
   location: string;
   priority?: TicketPriority;
+}
+
+async function getTicketResult(ticketId: number, database: DatabaseClient) {
+  const ticket = await findTicketById(ticketId, database);
+  if (!ticket) {
+    throw new TicketServiceError(
+      "TICKET_NOT_FOUND", "The requested ticket does not exist",
+    );
+  }
+  return ticket;
 }
 
 export async function createTicket(
@@ -58,7 +68,6 @@ export async function createTicket(
         description: input.description,
         location: input.location,
         priority: input.priority,
-        source: TicketSource.HELPDESK,
       },
       transaction,
     );
@@ -102,7 +111,7 @@ export async function claimTicket(
     );
 
     if (!claimed) {
-      const existingTicket = await findTicketById(ticketId, transaction);
+      const existingTicket = await findTicketAccessRecordById(ticketId, transaction);
 
       if (!existingTicket) {
         throw new TicketServiceError(
@@ -124,7 +133,7 @@ export async function claimTicket(
       );
     }
 
-    const ticket = await findTicketById(ticketId, transaction);
+    const ticket = await findTicketAccessRecordById(ticketId, transaction);
 
     if (!ticket) {
       throw new TicketServiceError(
@@ -163,16 +172,10 @@ export async function claimTicket(
       transaction,
     );
 
-    const updatedTicket = await findTicketById(ticketId, transaction);
-
-    if (!updatedTicket) {
-      throw new TicketServiceError(
-        "TICKET_NOT_FOUND",
-        "The requested ticket does not exist",
-      );
-    }
-
-    return { value: updatedTicket, notificationId: notification.id };
+    return {
+      value: await getTicketResult(ticketId, transaction),
+      notificationId: notification.id,
+    };
   });
 
   return deliverAfterCommit(result);
@@ -186,7 +189,7 @@ export async function assignTicketTechnician(
   requireTicketAssignmentAccess(currentUser);
 
   const result = await runInTransaction(async (transaction) => {
-    const ticket = await findTicketById(ticketId, transaction);
+    const ticket = await findTicketAccessRecordById(ticketId, transaction);
     const technician = await findUserById(technicianId, transaction);
 
     if (!ticket) {
@@ -215,6 +218,10 @@ export async function assignTicketTechnician(
         "TICKET_ALREADY_RESOLVED",
         "A resolved ticket cannot be assigned",
       );
+    }
+
+    if (ticket.assignedTechnicianId === technicianId) {
+      return { value: await getTicketResult(ticketId, transaction) };
     }
 
     const previousTechnicianId = ticket.assignedTechnicianId;
@@ -256,16 +263,10 @@ export async function assignTicketTechnician(
       transaction,
     );
 
-    const updatedTicket = await findTicketById(ticketId, transaction);
-
-    if (!updatedTicket) {
-      throw new TicketServiceError(
-        "TICKET_NOT_FOUND",
-        "The requested ticket does not exist",
-      );
-    }
-
-    return { value: updatedTicket, notificationId: notification.id };
+    return {
+      value: await getTicketResult(ticketId, transaction),
+      notificationId: notification.id,
+    };
   });
 
   return deliverAfterCommit(result);
@@ -277,7 +278,7 @@ export async function changeTicketStatus(
   newStatus: TicketStatus,
 ) {
   const result = await runInTransaction(async (transaction) => {
-    const ticket = await findTicketById(ticketId, transaction);
+    const ticket = await findTicketAccessRecordById(ticketId, transaction);
 
     if (!ticket) {
       throw new TicketServiceError(
@@ -289,7 +290,7 @@ export async function changeTicketStatus(
     requireTicketStatusChangeAccess(currentUser, ticket);
 
     if (ticket.status === newStatus) {
-      return { value: ticket };
+      return { value: await getTicketResult(ticketId, transaction) };
     }
 
     if (ticket.status === TicketStatus.RESOLVED) {
@@ -350,16 +351,10 @@ export async function changeTicketStatus(
       transaction,
     );
 
-    const updatedTicket = await findTicketById(ticketId, transaction);
-
-    if (!updatedTicket) {
-      throw new TicketServiceError(
-        "TICKET_NOT_FOUND",
-        "The requested ticket does not exist",
-      );
-    }
-
-    return { value: updatedTicket, notificationId: notification.id };
+    return {
+      value: await getTicketResult(ticketId, transaction),
+      notificationId: notification.id,
+    };
   });
 
   return deliverAfterCommit(result);

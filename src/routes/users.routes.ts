@@ -7,9 +7,6 @@ import { requireAuthentication } from "../middleware/require-authentication.js";
 
 export const userRoutes = Router();
 
-userRoutes.get("/", requireAuthentication, listUsersController);
-userRoutes.patch(
-  "/:userId",
-  requireAuthentication,
-  updateUserController,
-);
+userRoutes.use(requireAuthentication);
+userRoutes.get("/", listUsersController);
+userRoutes.patch("/:userId", updateUserController);

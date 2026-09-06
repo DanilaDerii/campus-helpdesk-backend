@@ -1,9 +1,9 @@
 import {
   TicketPriority,
-  TicketSource,
   TicketStatus,
 } from "../../generated/prisma/client.js";
 import { prisma, type DatabaseClient } from "../database/prisma.js";
+import { safeUserSelection } from "./user-selection.js";
 
 export interface CreateTicketRecordInput {
   requesterId: number;
@@ -12,15 +12,7 @@ export interface CreateTicketRecordInput {
   description?: string;
   location?: string;
   priority?: TicketPriority;
-  source?: TicketSource;
 }
-
-const safeUserSelection = {
-  id: true,
-  email: true,
-  displayName: true,
-  role: true,
-} as const;
 
 const ticketSummaryRelations = {
   requester: { select: safeUserSelection },
@@ -40,7 +32,6 @@ export function createTicketRecord(
       description: input.description ?? "",
       location: input.location ?? "",
       ...(input.priority ? { priority: input.priority } : {}),
-      ...(input.source ? { source: input.source } : {}),
     },
     include: ticketSummaryRelations,
   });

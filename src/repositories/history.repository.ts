@@ -1,11 +1,5 @@
 import { prisma, type DatabaseClient } from "../database/prisma.js";
-
-const safeChangedBySelection = {
-  id: true,
-  email: true,
-  displayName: true,
-  role: true,
-} as const;
+import { safeUserSelection } from "./user-selection.js";
 
 export interface CreateHistoryInput {
   ticketId: number;
@@ -36,7 +30,7 @@ export function listTicketHistory(
 ) {
   return database.ticketHistory.findMany({
     where: { ticketId },
-    include: { changedBy: { select: safeChangedBySelection } },
+    include: { changedBy: { select: safeUserSelection } },
     orderBy: { createdAt: "asc" },
   });
 }

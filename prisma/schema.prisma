@@ -28,15 +28,11 @@ enum TicketPriority {
   URGENT
 }
 
-enum TicketSource {
-  HELPDESK
-  EDUCORE
-}
-
 enum DeliveryStatus {
   PENDING
   SENT
   FAILED
+  EXHAUSTED
 }
 
 model User {
@@ -77,7 +73,6 @@ model Ticket {
   location             String         @default("") @db.VarChar(200)
   status               TicketStatus   @default(OPEN)
   priority             TicketPriority @default(MEDIUM)
-  source               TicketSource   @default(HELPDESK)
   createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
   resolvedAt           DateTime?      @map("resolved_at") @db.Timestamptz(3)
@@ -137,12 +132,14 @@ model EmailNotification {
   deliveryStatus    DeliveryStatus @default(PENDING) @map("delivery_status")
   providerMessageId String?        @map("provider_message_id") @db.VarChar(255)
   errorMessage      String?        @map("error_message") @db.Text
+  attemptCount      Int            @default(0) @map("attempt_count")
+  nextAttemptAt     DateTime?      @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   sentAt            DateTime?      @map("sent_at") @db.Timestamptz(3)
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
 
   @@index([ticketId])
-  @@index([deliveryStatus])
+  @@index([deliveryStatus, nextAttemptAt])
   @@map("email_notifications")
 }

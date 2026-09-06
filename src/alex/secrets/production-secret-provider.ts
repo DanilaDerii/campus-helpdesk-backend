@@ -13,8 +13,6 @@ const VAULT_SECRET_NAMES: Readonly<Record<string, string>> = {
   DATABASE_URL: "helpdesk-database-url",
   JWT_SECRET: "helpdesk-jwt-secret",
   BREVO_API_KEY: "helpdesk-brevo-api-key",
-  PEER_INBOUND_API_KEY: "helpdesk-peer-inbound-api-key",
-  EDUCORE_OUTBOUND_API_KEY: "helpdesk-educore-outbound-api-key",
   ENTRA_CLIENT_SECRET: "helpdesk-entra-client-secret",
 };
 
