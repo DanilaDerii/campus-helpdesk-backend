@@ -33,7 +33,6 @@ export function createTicketRecord(
       location: input.location ?? "",
       ...(input.priority ? { priority: input.priority } : {}),
     },
-    include: ticketSummaryRelations,
   });
 }
 
@@ -57,6 +56,16 @@ export function findTicketById(
   });
 }
 
+export function findTicketSummaryById(
+  id: number,
+  database: DatabaseClient = prisma,
+) {
+  return database.ticket.findUnique({
+    where: { id },
+    include: ticketSummaryRelations,
+  });
+}
+
 /** Load only the ticket fields needed for access checks and notifications. */
 export function findTicketAccessRecordById(
   id: number,
@@ -69,8 +78,6 @@ export function findTicketAccessRecordById(
       requesterId: true,
       assignedTechnicianId: true,
       status: true,
-      requester: { select: safeUserSelection },
-      assignedTechnician: { select: safeUserSelection },
     },
   });
 }
@@ -133,19 +140,27 @@ export async function claimOpenTicket(
   return result.count === 1;
 }
 
-export function assignTechnician(
+/** Assign only when the ticket still matches the values read by the service. */
+export async function assignTechnician(
   ticketId: number,
   technicianId: number,
+  expectedTechnicianId: number | null,
+  expectedStatus: TicketStatus,
   database: DatabaseClient = prisma,
-) {
-  return database.ticket.update({
-    where: { id: ticketId },
+): Promise<boolean> {
+  const result = await database.ticket.updateMany({
+    where: {
+      id: ticketId,
+      assignedTechnicianId: expectedTechnicianId,
+      status: expectedStatus,
+    },
     data: {
       assignedTechnicianId: technicianId,
       status: TicketStatus.IN_PROGRESS,
     },
-    include: ticketSummaryRelations,
   });
+
+  return result.count === 1;
 }
 
 /** Change status only if no other request has changed it since it was read. */

@@ -13,8 +13,8 @@ Remaining release blockers: [todo.md](../../todo.md).
 - Use root `compose.yaml` plus `deploy/alex/compose.postgres.override.yaml`; retain the
   same Compose project name and database volume across releases.
 - Production secrets load through Key Vault using the VM's managed identity.
-- PostgreSQL publishes to loopback. Express currently omits its bind host; loopback
-  binding and effective network isolation still need correction/verification.
+- PostgreSQL publishes to loopback. Express validates and defaults to the loopback
+  host; effective VM firewall and NSG isolation still need live verification.
 
 ## Host and configuration
 
@@ -30,8 +30,10 @@ Store only non-secret settings in `/opt/campus-helpdesk/.env` (mode 640):
 
 ```dotenv
 PORT=3001
+HOST=127.0.0.1
 NODE_ENV=production
 LOG_LEVEL=info
+PUBLIC_BASE_PATH=/helpdesk
 KEY_VAULT_URL=https://<vault-name>.vault.azure.net
 BREVO_SENDER_EMAIL=helpdesk@<domain>
 BREVO_SENDER_NAME=Campus HelpDesk
@@ -62,6 +64,12 @@ Microsoft callback-to-local-user/JWT provisioning is implemented but still needs
 approved live verification. The first real administrator needs controlled
 provisioning; do not seed development users into production or enable public
 development login.
+
+The callback stores the HelpDesk JWT in a `Secure`, `HttpOnly`, `SameSite=Strict`
+cookie scoped to `/helpdesk`, then redirects to `/helpdesk/api/v1/me`. After the
+frontend is deployed, change only that success destination to the frontend root.
+Cookie-authenticated state changes require the public origin reported through the
+trusted loopback Nginx proxy. `POST /helpdesk/api/v1/auth/logout` clears the cookie.
 
 ## Installation and release
 
@@ -107,7 +115,8 @@ DB, installs/builds, migrates and restarts. Review before production use:
 - It replaces dependencies beneath the running process; separate release directories
   are still needed. Build failure must leave the previous release usable.
 - Public health failure is currently printed but does not fail deployment.
-- `/health` does not check PostgreSQL; `/ready` remains unfinished.
+- `/health` checks the process and `/ready` checks PostgreSQL. The deployment
+  script still needs to make readiness failure stop the release.
 - Apply both new migrations before running the updated application. The ticket
   schema cleanup removes the obsolete `source` field; ticket records are preserved.
   Existing pending/failed records start with a fresh five-attempt budget; sent

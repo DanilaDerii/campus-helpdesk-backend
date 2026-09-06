@@ -15,7 +15,9 @@ interface LogFields {
   attempt?: number;
   nextAttemptAt?: string;
   port?: number;
+  host?: string;
   signal?: string;
+  configuration?: string;
   users?: number;
   categories?: number;
 }

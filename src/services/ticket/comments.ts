@@ -3,7 +3,9 @@ import {
   createPendingNotification,
   createTicketComment,
   createTicketHistory,
+  findTicketCommentById,
   findTicketAccessRecordById,
+  findUserById,
   listTicketComments,
 } from "../../repositories/index.js";
 import type { AuthenticatedUser } from "../auth.service.js";
@@ -45,26 +47,43 @@ export async function addTicketComment(
       transaction,
     );
 
-    const recipientEmail =
+    const recipientId =
       currentUser.id === ticket.requesterId
-        ? ticket.assignedTechnician?.email
-        : ticket.requester.email;
+        ? ticket.assignedTechnicianId
+        : ticket.requesterId;
 
-    const notification = recipientEmail
+    const recipient = recipientId === null
+      ? null : await findUserById(recipientId, transaction);
+
+    const notification = recipient
       ? await createPendingNotification(
           {
             ticketId,
-            recipientEmail,
+            recipientEmail: recipient.email,
             notificationType: "TICKET_COMMENT_ADDED",
           },
           transaction,
         )
       : undefined;
 
-    return { value: comment, notificationId: notification?.id };
+    return { commentId: comment.id, notificationId: notification?.id };
   });
 
-  return deliverAfterCommit(result);
+  await deliverAfterCommit({
+    value: undefined,
+    notificationId: result.notificationId,
+  });
+
+  const comment = await findTicketCommentById(result.commentId);
+
+  if (!comment) {
+    throw new TicketServiceError(
+      "TICKET_NOT_FOUND",
+      "The new ticket comment could not be loaded",
+    );
+  }
+
+  return comment;
 }
 
 export async function getTicketCommentsForUser(

@@ -22,52 +22,69 @@ Result: passed with Node.js 22.23.2 and Prisma 7.10.0.
 
 ## Step 2 — Local PostgreSQL
 
-- [ ] Inspect the existing local database without resetting it.
-- [ ] Start PostgreSQL through Docker Compose.
-- [ ] Use a separate local test database where practical.
-- [ ] Apply the committed migrations.
-- [ ] Run the development seed.
-- [ ] Confirm the expected tables, columns, and migration history.
+- [x] Inspect the existing local database without resetting it.
+- [x] Start PostgreSQL through Docker Compose.
+- [x] Use a separate local test database where practical.
+- [x] Apply the committed migrations.
+- [x] Run the development seed.
+- [x] Confirm the expected tables, columns, and migration history.
 
 Pass condition: PostgreSQL starts, migrations apply, and the seed succeeds.
 
+Result: passed using the isolated `helpdesk_step2_7297b6d` database. The normal
+local `helpdesk` database was inspected but not migrated or seeded again.
+
 ## Step 3 — Core backend workflow
 
-- [ ] Start the backend and check `/health`.
-- [ ] Test development login, JWT validation, and `/api/v1/me`.
-- [ ] Test student, faculty, technician, and administrator RBAC.
-- [ ] Test category management.
-- [ ] Test ticket creation, listing, and detail.
-- [ ] Test claiming, assignment, and status changes.
-- [ ] Test comments and history.
-- [ ] Test inactive-user rejection.
+- [x] Start the backend and check `/health`.
+- [x] Test development login, JWT validation, and `/api/v1/me`.
+- [x] Test student, faculty, technician, and administrator RBAC.
+- [x] Test category management.
+- [x] Test ticket creation, listing, and detail.
+- [x] Test claiming, assignment, and status changes.
+- [x] Test comments and history.
+- [x] Test inactive-user rejection.
 
 Pass condition: the complete local workflow behaves correctly for every role.
 
+Result: passed 43 HTTP checks against `helpdesk_step2_7297b6d`. All four
+development users were left active and all generated notifications reached `SENT`.
+
 ## Step 4 — Backend hardening
 
-- [ ] Return suitable `4xx` errors for malformed or oversized JSON.
-- [ ] Return stable errors for database constraint conflicts.
-- [ ] Protect ticket reassignment from concurrent duplicate changes.
-- [ ] Validate startup configuration and ports.
-- [ ] Bind the backend to the intended private interface.
-- [ ] Add `/ready` to check PostgreSQL readiness.
-- [ ] Confirm graceful shutdown.
-- [ ] Rebuild and run focused regression checks.
+- [x] Return suitable `4xx` errors for malformed or oversized JSON.
+- [x] Return stable errors for database constraint conflicts.
+- [x] Protect ticket reassignment from concurrent duplicate changes.
+- [x] Validate startup configuration and ports.
+- [x] Bind the backend to the intended private interface.
+- [x] Add `/ready` to check PostgreSQL readiness.
+- [x] Confirm graceful shutdown.
+- [x] Resolve the `pg` concurrent-query deprecation warning before pg 9.
+- [x] Rebuild and run focused regression checks.
 
 Pass condition: the hardened backend passes its focused checks after a clean build.
 
+Result: passed a clean build, strict TypeScript checks, 14 configuration checks,
+19 focused hardening checks, the complete 43-check workflow, database-down
+readiness/recovery, and traced graceful shutdown without the `pg` warning.
+
 ## Step 5 — Authentication and notifications
 
-- [ ] Test external login for a new user and an existing user.
-- [ ] Test inactive-user rejection and identity conflicts.
-- [ ] Test OAuth state, browser binding, and PKCE.
-- [ ] Finalize the secure `HttpOnly` authentication cookie.
-- [ ] Implement and test logout.
-- [ ] Test notification success, retries, attempt limits, and terminal failure.
-- [ ] Confirm logs do not expose secrets or sensitive ticket information.
+- [x] Test external login for a new user and an existing user.
+- [x] Test inactive-user rejection and identity conflicts.
+- [x] Test OAuth state, browser binding, and PKCE.
+- [x] Finalize the secure `HttpOnly` authentication cookie.
+- [x] Implement and test logout.
+- [x] Test notification success, retries, attempt limits, and terminal failure.
+- [x] Confirm logs do not expose secrets or sensitive ticket information.
 
 Pass condition: authentication and notification checks pass locally without Azure.
+
+Result: six permanent tests pass against the isolated database, covering external
+identity lifecycle, PKCE/state, secure cookies, cookie authentication/logout,
+same-origin request protection, successful and duplicate delivery, bounded retries,
+`EXHAUSTED`, and sanitized logs. The complete 43-check Bearer-token workflow also
+still passes.
 
 ## Step 6 — Deployment preparation
 

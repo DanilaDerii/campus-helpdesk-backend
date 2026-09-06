@@ -9,6 +9,15 @@ export function createTicketComment(
 ) {
   return database.ticketComment.create({
     data: { ticketId, authorId, message },
+  });
+}
+
+export function findTicketCommentById(
+  id: number,
+  database: DatabaseClient = prisma,
+) {
+  return database.ticketComment.findUnique({
+    where: { id },
     include: { author: { select: safeUserSelection } },
   });
 }

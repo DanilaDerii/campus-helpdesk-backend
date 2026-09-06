@@ -35,3 +35,26 @@ export function runInTransaction<T>(
 export function disconnectDatabase(): Promise<void> {
   return prisma.$disconnect();
 }
+
+/** Reject when PostgreSQL does not answer before the readiness deadline. */
+export async function checkDatabaseReadiness(
+  timeoutMs: number = 2_000,
+): Promise<void> {
+  let timeout: NodeJS.Timeout | undefined;
+
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("Database readiness check timed out")),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}

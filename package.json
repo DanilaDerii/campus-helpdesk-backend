@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc",
+    "test": "npm run build && node --test --test-concurrency=1 tests/*.test.mjs",
     "start": "node dist/src/server.js",
     "db:start": "docker compose up -d postgres",
     "db:stop": "docker compose down",

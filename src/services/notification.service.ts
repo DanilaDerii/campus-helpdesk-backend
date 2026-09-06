@@ -171,38 +171,43 @@ export async function retryUndeliveredNotifications(): Promise<void> {
 /** Start a small in-process retry worker and return its cleanup function. */
 export function startNotificationRetryWorker(
   intervalMs: number = DEFAULT_RETRY_INTERVAL_MS,
-): () => void {
-  let isRetrying = false;
+): () => Promise<void> {
   let retryFailureLogged = false;
+  let retryInFlight: Promise<void> | undefined;
 
-  const retry = async () => {
-    if (isRetrying) {
-      return;
+  const retry = (): Promise<void> => {
+    if (retryInFlight) {
+      return retryInFlight;
     }
 
-    isRetrying = true;
+    retryInFlight = (async () => {
+      try {
+        await retryUndeliveredNotifications();
+        if (retryFailureLogged) {
+          logEvent("info", "notification_worker_recovered", { operation: "notification_retry" });
+        }
+        retryFailureLogged = false;
+      } catch (error: unknown) {
+        if (!retryFailureLogged) {
+          logEvent("error", "notification_worker_failed", {
+            operation: "notification_retry", ...safeErrorDetails(error),
+          });
+        }
+        retryFailureLogged = true;
+      }
+    })().finally(() => {
+      retryInFlight = undefined;
+    });
 
-    try {
-      await retryUndeliveredNotifications();
-      if (retryFailureLogged) {
-        logEvent("info", "notification_worker_recovered", { operation: "notification_retry" });
-      }
-      retryFailureLogged = false;
-    } catch (error: unknown) {
-      if (!retryFailureLogged) {
-        logEvent("error", "notification_worker_failed", {
-          operation: "notification_retry", ...safeErrorDetails(error),
-        });
-      }
-      retryFailureLogged = true;
-    } finally {
-      isRetrying = false;
-    }
+    return retryInFlight;
   };
 
   void retry();
   const timer = setInterval(() => void retry(), intervalMs);
   timer.unref();
 
-  return () => clearInterval(timer);
+  return async () => {
+    clearInterval(timer);
+    await retryInFlight;
+  };
 }

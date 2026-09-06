@@ -24,8 +24,8 @@ TypeScript, Express 5, Prisma 7, PostgreSQL. Requests follow:
 | Email | Console provider; debug event only | Brevo |
 
 Production is selected by `NODE_ENV=production`. It disables development login
-and selects Key Vault/Brevo. Settings and secrets still initialize partly during
-module imports; explicit validated startup remains a task.
+and selects Key Vault/Brevo. Runtime environment, loopback host, port, log level,
+and required provider settings are validated before application modules load.
 
 ## Data and access
 
@@ -37,8 +37,11 @@ and email notifications. Comments have a required author. The current diagram is
 Microsoft proves identity; PostgreSQL controls local role and active state.
 Application JWTs contain the local user ID and expire after one hour. Each
 protected request reloads the user, so deactivation and role changes take effect.
-First-time external users default to `STUDENT`. Controlled first-administrator
-provisioning remains unfinished.
+Protected routes accept the JWT from a Bearer header or the secure browser cookie.
+Cookie-authenticated state changes require an exact same-origin `Origin` header;
+Bearer-authenticated API clients are unaffected.
+First-time external users default to `STUDENT`; the first administrator is
+promoted manually in PostgreSQL after completing Microsoft login once.
 
 | Action | Student / Faculty | Technician | Administrator |
 | --- | --- | --- | --- |
@@ -59,7 +62,8 @@ own ticket detail, but the technician list currently shows only operational tick
   notification in one transaction. Categories must exist.
 - Claiming atomically assigns an open/unassigned ticket and changes it to `IN_PROGRESS`.
 - Admin assignment requires an active technician and rejects resolved tickets.
-  Assigning the same technician again produces no history entry or email.
+  A conditional update protects concurrent assignment. Assigning the same
+  technician again produces no duplicate history entry or email.
 - Allowed changes: `OPEN -> IN_PROGRESS`, `OPEN -> RESOLVED`, `IN_PROGRESS -> RESOLVED`.
   Resolution sets `resolvedAt`; reopening is unsupported. An unchanged status is a no-op.
 - Comments require ticket access. Notify the assigned technician when the requester
@@ -95,14 +99,16 @@ Existing server routes such as `/content` and `/api` must remain available.
 
 | Area | Current endpoints |
 | --- | --- |
-| System/auth | `GET /health`, `GET /api/v1/me`, `POST /api/v1/auth/dev-login`, `GET /api/v1/auth/login`, `GET /api/v1/auth/callback` |
+| System/auth | `GET /health`, `GET /ready`, `GET /api/v1/me`, `POST /api/v1/auth/dev-login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/login`, `GET /api/v1/auth/callback` |
 | Tickets | `GET/POST /api/v1/tickets`, `GET /api/v1/tickets/:ticketId` |
 | Ticket actions | `POST .../:ticketId/claim`, `PATCH .../:ticketId/status`, `PATCH .../:ticketId/assignment` |
 | Discussion | `GET/POST .../:ticketId/comments`, `GET .../:ticketId/history` |
 | Administration | `GET /api/v1/users`, `PATCH /api/v1/users/:userId`, `GET/POST /api/v1/categories`, `PATCH/DELETE /api/v1/categories/:categoryId` |
 
 The Microsoft callback resolves or creates the local user, rejects inactive users
-and identity conflicts, then returns the same JWT response as development login.
-Its state is bound to an HTTP-only browser cookie and the code exchange uses PKCE.
-The frontend login handoff/logout contract is still unfinished. `/health` only
-checks the process; `/ready` and OpenAPI are also unfinished.
+and identity conflicts, places the one-hour JWT in a secure HTTP-only cookie, and
+redirects to the public `/api/v1/me` path. Its state is bound to a separate
+short-lived browser cookie and the code exchange uses PKCE. Logout clears the
+authentication cookie and requires the same origin. When the frontend exists,
+only the successful redirect destination changes. `/health` checks the process,
+while `/ready` checks PostgreSQL with a timeout. OpenAPI is still unfinished.

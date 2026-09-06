@@ -13,6 +13,7 @@ import {
   findCategoryById,
   findTicketAccessRecordById,
   findTicketById,
+  findTicketSummaryById,
   findUserById,
   transitionTicketStatus,
 } from "../../repositories/index.js";
@@ -34,14 +35,50 @@ export interface CreateTicketInput {
   priority?: TicketPriority;
 }
 
-async function getTicketResult(ticketId: number, database: DatabaseClient) {
-  const ticket = await findTicketById(ticketId, database);
+async function getTicketResult(ticketId: number) {
+  const ticket = await findTicketById(ticketId);
   if (!ticket) {
     throw new TicketServiceError(
       "TICKET_NOT_FOUND", "The requested ticket does not exist",
     );
   }
   return ticket;
+}
+
+async function finishTicketCommand(result: {
+  ticketId: number;
+  notificationId?: number;
+}) {
+  const ticket = await getTicketResult(result.ticketId);
+  return deliverAfterCommit({ value: ticket, notificationId: result.notificationId });
+}
+
+async function finishTicketCreation(result: {
+  ticketId: number;
+  notificationId: number;
+}) {
+  const ticket = await findTicketSummaryById(result.ticketId);
+
+  if (!ticket) {
+    throw new TicketServiceError(
+      "TICKET_NOT_FOUND", "The new ticket could not be loaded",
+    );
+  }
+
+  return deliverAfterCommit({ value: ticket, notificationId: result.notificationId });
+}
+
+async function getUserEmail(userId: number, database: DatabaseClient) {
+  const user = await findUserById(userId, database);
+
+  if (!user) {
+    throw new TicketServiceError(
+      "TICKET_NOT_FOUND",
+      "The ticket requester no longer exists",
+    );
+  }
+
+  return user.email;
 }
 
 export async function createTicket(
@@ -91,10 +128,10 @@ export async function createTicket(
       transaction,
     );
 
-    return { value: ticket, notificationId: notification.id };
+    return { ticketId: ticket.id, notificationId: notification.id };
   });
 
-  return deliverAfterCommit(result);
+  return finishTicketCreation(result);
 }
 
 export async function claimTicket(
@@ -142,6 +179,8 @@ export async function claimTicket(
       );
     }
 
+    const requesterEmail = await getUserEmail(ticket.requesterId, transaction);
+
     await createTicketHistory(
       {
         ticketId,
@@ -166,19 +205,16 @@ export async function claimTicket(
     const notification = await createPendingNotification(
       {
         ticketId,
-        recipientEmail: ticket.requester.email,
+        recipientEmail: requesterEmail,
         notificationType: "TICKET_ASSIGNED",
       },
       transaction,
     );
 
-    return {
-      value: await getTicketResult(ticketId, transaction),
-      notificationId: notification.id,
-    };
+    return { ticketId, notificationId: notification.id };
   });
 
-  return deliverAfterCommit(result);
+  return finishTicketCommand(result);
 }
 
 export async function assignTicketTechnician(
@@ -221,13 +257,51 @@ export async function assignTicketTechnician(
     }
 
     if (ticket.assignedTechnicianId === technicianId) {
-      return { value: await getTicketResult(ticketId, transaction) };
+      return { ticketId };
     }
 
     const previousTechnicianId = ticket.assignedTechnicianId;
     const previousStatus = ticket.status;
 
-    await assignTechnician(ticketId, technicianId, transaction);
+    const assignmentChanged = await assignTechnician(
+      ticketId,
+      technicianId,
+      previousTechnicianId,
+      previousStatus,
+      transaction,
+    );
+
+    if (!assignmentChanged) {
+      const currentTicket = await findTicketAccessRecordById(
+        ticketId,
+        transaction,
+      );
+
+      if (!currentTicket) {
+        throw new TicketServiceError(
+          "TICKET_NOT_FOUND",
+          "The requested ticket does not exist",
+        );
+      }
+
+      if (currentTicket.assignedTechnicianId === technicianId) {
+        return { ticketId };
+      }
+
+      if (currentTicket.status === TicketStatus.RESOLVED) {
+        throw new TicketServiceError(
+          "TICKET_ALREADY_RESOLVED",
+          "A resolved ticket cannot be assigned",
+        );
+      }
+
+      throw new TicketServiceError(
+        "TICKET_ASSIGNMENT_CONFLICT",
+        "The ticket assignment changed; reload and try again",
+      );
+    }
+
+    const requesterEmail = await getUserEmail(ticket.requesterId, transaction);
 
     await createTicketHistory(
       {
@@ -257,19 +331,16 @@ export async function assignTicketTechnician(
     const notification = await createPendingNotification(
       {
         ticketId,
-        recipientEmail: ticket.requester.email,
+        recipientEmail: requesterEmail,
         notificationType: "TICKET_ASSIGNED",
       },
       transaction,
     );
 
-    return {
-      value: await getTicketResult(ticketId, transaction),
-      notificationId: notification.id,
-    };
+    return { ticketId, notificationId: notification.id };
   });
 
-  return deliverAfterCommit(result);
+  return finishTicketCommand(result);
 }
 
 export async function changeTicketStatus(
@@ -290,7 +361,7 @@ export async function changeTicketStatus(
     requireTicketStatusChangeAccess(currentUser, ticket);
 
     if (ticket.status === newStatus) {
-      return { value: await getTicketResult(ticketId, transaction) };
+      return { ticketId };
     }
 
     if (ticket.status === TicketStatus.RESOLVED) {
@@ -339,10 +410,12 @@ export async function changeTicketStatus(
       transaction,
     );
 
+    const requesterEmail = await getUserEmail(ticket.requesterId, transaction);
+
     const notification = await createPendingNotification(
       {
         ticketId,
-        recipientEmail: ticket.requester.email,
+        recipientEmail: requesterEmail,
         notificationType:
           newStatus === TicketStatus.RESOLVED
             ? "TICKET_RESOLVED"
@@ -351,11 +424,8 @@ export async function changeTicketStatus(
       transaction,
     );
 
-    return {
-      value: await getTicketResult(ticketId, transaction),
-      notificationId: notification.id,
-    };
+    return { ticketId, notificationId: notification.id };
   });
 
-  return deliverAfterCommit(result);
+  return finishTicketCommand(result);
 }

@@ -6,6 +6,11 @@ import {
   completeExternalLogin,
 } from "../../services/auth.service.js";
 import {
+  authenticationCookiePath,
+  authenticationSuccessPath,
+  setAuthenticationCookie,
+} from "../../services/auth-cookie.js";
+import {
   EntraNotConfiguredError,
   getEntraIdentityProvider,
 } from "./entra-identity-provider.js";
@@ -29,7 +34,7 @@ const loginCookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: "lax" as const,
-  path: "/",
+  path: authenticationCookiePath(),
 };
 
 function encodeLoginCookie(transaction: BrowserLoginTransaction): string {
@@ -156,7 +161,13 @@ const completeMicrosoftLogin: RequestHandler = async (
       throw toRouteError(error);
     }
 
-    response.status(200).json(await completeExternalLogin(identity));
+    const result = await completeExternalLogin(identity);
+    setAuthenticationCookie(
+      response,
+      result.accessToken,
+      result.expiresInSeconds,
+    );
+    response.redirect(303, authenticationSuccessPath());
   } catch (error: unknown) {
     next(
       error instanceof InvalidLoginStateError
