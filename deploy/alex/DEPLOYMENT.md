@@ -239,16 +239,20 @@ the deployed host before calling this configuration complete.
 | Symptom | First action |
 | --- | --- |
 | Startup failure | Read the namespaced journal; check port conflicts, required settings and Key Vault access. Diagnose filesystem errors before weakening service hardening. |
+| Service stuck "activating", nothing listening | `EnvironmentFile` is missing or unreadable, so systemd never spawns node. The namespaced journal stays **empty** because the process never ran; read the default journal instead (`journalctl -u helpdesk`), which shows "Failed to load environment files". Recreate `/opt/campus-helpdesk/.env` from the block above. It holds no secrets, so recreating it is safe. |
 | DB missing after reboot | Check both Compose files were used and the existing volume is attached. |
 | Key Vault 403 | Check VM identity, network access, vault data-plane RBAC and propagation. |
 | Microsoft 503 / 501 | 503: missing Entra settings. 501: external-login service still unfinished. |
 | Microsoft 502 | Correlate request ID and safe error metadata; check registration, callback URI, consent/scopes and secret expiry. |
 | Email exhausted / accepted but absent | Check Brevo's delivery events, sender verification, API status and credentials. Do not reset retries blindly. |
 
-Rollback is not yet reliable through `deploy.sh <commit>`: its unconditional pull
-fails on a detached commit. Preserve the previous release before deployment; a
-controlled rollback must stop/repoint the service to that built commit and confirm
-its compatibility with the current database. Fix automation before relying on it.
+Rollback through `deploy.sh <commit>` works: the script fast-forwards only when
+HEAD is on a branch, so a pinned commit no longer aborts on a detached HEAD.
+What it does **not** do is undo migrations, so confirm the older code is
+compatible with the current database schema before rolling back. The script also
+deploys in place, replacing dependencies and build output beneath the running
+process, so a failed build leaves the previous release unable to restart cleanly;
+separate release directories remain the outstanding improvement.
 
 Take restricted-access PostgreSQL backups before destructive migrations and keep
 them outside the repository. Restore first into a separate database to verify the

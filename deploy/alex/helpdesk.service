@@ -21,6 +21,23 @@ Description=Campus HelpDesk API
 After=network-online.target docker.service
 Wants=network-online.target
 
+# Give up after repeated rapid failures instead of restarting forever.
+#
+# Without a limit, a permanent fault restarts every RestartSec indefinitely: a
+# missing .env once produced over four thousand restarts across roughly three
+# hours, and because the unit never settles, `systemctl is-active` keeps
+# reporting "activating" rather than "failed". That hides the fault and, on a
+# burstable VM, spends CPU credits doing it.
+#
+# The window is deliberately generous. Startup reads secrets from Key Vault, so
+# a cold boot can legitimately fail a few times while the network and the
+# instance metadata service come up. Ten attempts inside two minutes rides that
+# out, while a genuine misconfiguration lands in a clear "failed" state within
+# about a minute. Clear it after fixing the cause with:
+#   sudo systemctl reset-failed helpdesk
+StartLimitIntervalSec=120
+StartLimitBurst=10
+
 [Service]
 Type=simple
 User=helpdesk
@@ -32,9 +49,10 @@ LogNamespace=helpdesk
 StandardOutput=journal
 StandardError=journal
 
-# Survive crashes and reboots.
+# Survive crashes and reboots. Paired with the start limit above, so a
+# transient fault recovers while a permanent one stops and reports failed.
 Restart=always
-RestartSec=3
+RestartSec=5
 
 # Cap memory independently from PostgreSQL.
 MemoryMax=512M
