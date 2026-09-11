@@ -18,6 +18,15 @@ export class ApiError extends Error {
 // wrong service. BASE_URL comes from the Vite base setting.
 const apiRoot = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+/**
+ * Absolute URL for an API path, for the cases that cannot go through request():
+ * a full-page navigation such as starting the Microsoft sign-in, which has to
+ * be a real browser navigation rather than a fetch so the browser follows the
+ * redirect to Microsoft. Exported so those call sites share this prefix instead
+ * of hardcoding one that only works at the domain root.
+ */
+export const apiUrl = (path: string) => `${apiRoot}${path}`;
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");

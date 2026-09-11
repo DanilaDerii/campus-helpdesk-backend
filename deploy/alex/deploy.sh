@@ -60,6 +60,66 @@ vault_secret() {
     || fail "Could not read \"$name\" from $VAULT_URL. Check the Key Vault Secrets User role assignment."
 }
 
+# --- Host configuration files ----------------------------------------------
+#
+# The repository is the source of truth for these. They used to be copied by
+# hand, which meant a file could silently go missing: a deleted logging
+# configuration broke every Nginx reload, and nothing in the release process
+# would have noticed until the next one failed.
+#
+# The Nginx locations install as a snippet rather than being pasted into the
+# server block, because that block also serves unrelated applications and must
+# not be rewritten by a script. The server block needs exactly one line, added
+# once by hand:
+#
+#   include snippets/helpdesk.locations.conf;
+
+install_if_changed() {
+  local source="$1" destination="$2" mode="${3:-0644}"
+
+  if [ -f "$destination" ] && sudo cmp -s "$source" "$destination"; then
+    return 1
+  fi
+
+  sudo install -m "$mode" "$source" "$destination"
+  echo "  updated $destination"
+  return 0
+}
+
+install_host_files() {
+  local nginx_changed=0 systemd_changed=0
+
+  sudo install -d -m 0755 /etc/nginx/snippets /var/www/helpdesk /etc/systemd/journald@helpdesk.conf.d
+  sudo install -d -m 0750 -o www-data -g adm /var/log/helpdesk-nginx
+
+  if install_if_changed deploy/alex/nginx/helpdesk.logging.conf /etc/nginx/conf.d/helpdesk.logging.conf; then nginx_changed=1; fi
+  if install_if_changed deploy/alex/nginx/helpdesk.proxy.conf /etc/nginx/snippets/helpdesk.proxy.conf; then nginx_changed=1; fi
+  if install_if_changed deploy/alex/nginx/helpdesk.location.conf /etc/nginx/snippets/helpdesk.locations.conf; then nginx_changed=1; fi
+  if install_if_changed deploy/alex/journald/retention.conf /etc/systemd/journald@helpdesk.conf.d/retention.conf; then systemd_changed=1; fi
+  if install_if_changed deploy/alex/helpdesk.service /etc/systemd/system/helpdesk.service; then systemd_changed=1; fi
+  install_if_changed deploy/alex/logrotate/helpdesk /etc/logrotate.d/helpdesk || true
+
+  # The one line that cannot be installed automatically.
+  if ! sudo grep -rqs "helpdesk.locations.conf" /etc/nginx/sites-enabled/; then
+    fail "No Nginx server block includes the HelpDesk locations. Add this line inside the HTTPS server block for this host, then run the deployment again:
+
+    include snippets/helpdesk.locations.conf;"
+  fi
+
+  if [ "$systemd_changed" -eq 1 ]; then
+    log "Reloading systemd units"
+    sudo systemctl daemon-reload
+  fi
+
+  if [ "$nginx_changed" -eq 1 ]; then
+    log "Reloading Nginx"
+    sudo nginx -t
+    sudo systemctl reload nginx
+  else
+    echo "  Nginx configuration unchanged"
+  fi
+}
+
 # --- Refuse to deploy with production secrets sitting in .env ---------------
 if [ -f .env ] && grep -qE '^(DATABASE_URL|JWT_SECRET|BREVO_API_KEY|ENTRA_CLIENT_SECRET)=' .env; then
   if grep -qE '^NODE_ENV=production' .env; then
@@ -135,6 +195,9 @@ if [ -d frontend ]; then
 else
   log "No frontend directory in this checkout, skipping the application shell"
 fi
+
+log "Installing host configuration files"
+install_host_files
 
 # --- Release ---------------------------------------------------------------
 # npm ci replaces node_modules underneath the running process, so the restart

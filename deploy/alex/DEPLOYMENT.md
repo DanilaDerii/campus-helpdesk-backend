@@ -150,25 +150,40 @@ Commands below are for an approved deployment; they have not been run for this c
 2. Start PostgreSQL with both Compose files. Install dependencies, generate Prisma,
    compile, and apply committed migrations using a database URL retrieved securely
    from Key Vault. Prisma CLI reads `DATABASE_URL`; it cannot use the runtime provider.
-3. Install the logging files and service unit below, then the Nginx locations inside
-   the existing HTTPS server block. Install the format in the HTTP context first.
+3. Host configuration files are installed by `deploy.sh`; see below. Only the
+   one-line `include` inside the existing HTTPS server block is manual.
 4. Obtain verification approval before service/config checks, migrations or live requests.
 
-From the checkout, install the scoped logging configuration:
+### Host configuration files
 
-```bash
-sudo install -d -m 0755 /etc/systemd/journald@helpdesk.conf.d
-sudo install -m 0644 deploy/alex/journald/retention.conf /etc/systemd/journald@helpdesk.conf.d/retention.conf
-sudo install -m 0644 deploy/alex/helpdesk.service /etc/systemd/system/helpdesk.service
-sudo install -d -m 0750 -o www-data -g adm /var/log/helpdesk-nginx
-sudo install -m 0644 deploy/alex/nginx/helpdesk.logging.conf /etc/nginx/conf.d/helpdesk.logging.conf
-sudo install -d -m 0755 /etc/nginx/snippets
-sudo install -m 0644 deploy/alex/nginx/helpdesk.proxy.conf /etc/nginx/snippets/helpdesk.proxy.conf
-sudo install -d -m 0755 /var/www/helpdesk
-sudo install -m 0644 deploy/alex/logrotate/helpdesk /etc/logrotate.d/helpdesk
+`deploy.sh` installs these from the checkout on every release, creates the
+directories they need, and reloads Nginx or systemd only when a file actually
+changed:
+
+| Repository file | Installed as |
+| --- | --- |
+| `nginx/helpdesk.logging.conf` | `/etc/nginx/conf.d/helpdesk.logging.conf` |
+| `nginx/helpdesk.proxy.conf` | `/etc/nginx/snippets/helpdesk.proxy.conf` |
+| `nginx/helpdesk.location.conf` | `/etc/nginx/snippets/helpdesk.locations.conf` |
+| `helpdesk.service` | `/etc/systemd/system/helpdesk.service` |
+| `journald/retention.conf` | `/etc/systemd/journald@helpdesk.conf.d/retention.conf` |
+| `logrotate/helpdesk` | `/etc/logrotate.d/helpdesk` |
+
+These were copied by hand before, which is how one went missing. The logging
+configuration defines the `helpdesk` log format, so without it every Nginx
+reload fails with `unknown log format "helpdesk"`, and nothing in the release
+process noticed until the next reload.
+
+**One line still has to be added by hand, once.** The locations install as a
+snippet rather than being pasted into the server block, because that block also
+serves unrelated applications and must not be rewritten by a script. Inside the
+HTTPS `server { ... }` for this host, add:
+
+```nginx
+include snippets/helpdesk.locations.conf;
 ```
 
-Use `deploy/alex/nginx/helpdesk.location.conf` for the `/helpdesk/` locations.
+`deploy.sh` refuses to continue if no server block includes it.
 After approved validation, reload Nginx, reload systemd units, and restart the
 HelpDesk journal namespace and service. Enable the service for reboot recovery.
 Recreate the PostgreSQL container with both Compose files to activate its new log
