@@ -43,26 +43,31 @@ Client-side routes have no file on disk, so the shell location falls back with
 `try_files ... /helpdesk/index.html`. Without that, reloading a deep link such
 as `/helpdesk/tickets/5` returns 404.
 
-### Three settings the frontend must carry
+### How the sub-path is configured
 
-These live in `frontend/` rather than in this directory, and the deployment does
-not work without them. They matter because the application is served from a
-sub-path on a host that already runs other applications.
+The application is served from `/helpdesk/`, not from the domain root, because
+the host also runs other applications and both `/` and `/api` already belong to
+one of them. Three places need to agree, and all three read the same value so
+the path is configured once:
 
-1. **`base: "/helpdesk/"` in `vite.config.ts`.** Without it the built
-   `index.html` references `/assets/...` at the domain root, which is a
-   different application entirely.
-2. **A router basename of `/helpdesk`.** Otherwise client-side navigation
-   produces URLs outside the deployed path.
-3. **API calls prefixed with the base path.** `frontend/src/api.ts` currently
-   requests `/api/v1/...` as absolute paths. On this host `/api` is already
-   taken by another application, so in production those calls would reach the
-   wrong service and fail in a confusing way. Deriving the prefix from
-   `import.meta.env.BASE_URL` keeps the development proxy and the deployed path
-   consistent.
+| Setting | Where | Effect |
+| --- | --- | --- |
+| `base` | `frontend/vite.config.ts` | rewrites asset URLs in the built `index.html`, and exposes `import.meta.env.BASE_URL` |
+| Router `basename` | `frontend/src/main.tsx` | resolves client-side routes under the sub-path |
+| Request prefix | `frontend/src/api.ts` | prefixes every API call in one place, in `request()` |
 
-Until those land, the application works through the Vite dev proxy and does not
-work when served from `/helpdesk/`.
+Override the default with `VITE_BASE_PATH` at build time if the deployment path
+ever changes; nothing else needs editing.
+
+The prefix is applied inside `request()` rather than at each call site
+deliberately. Written per call, a later endpoint could omit it and would then
+reach `/api/...`, which on this host is a different application answering with
+plausible-looking data rather than an obvious failure.
+
+The development proxy strips the same prefix Nginx strips, so a request reaches
+the backend identically in development and production. Verified locally: assets
+resolve under `/helpdesk/assets/`, an unauthenticated visit lands on
+`/helpdesk/login`, and the session probe calls `/helpdesk/api/v1/me`.
 
 ### The post-login destination
 

@@ -11,11 +11,18 @@ export class ApiError extends Error {
   }
 }
 
+// Every path below is written from the application root, but the application is
+// deployed under a sub-path and "/api" on the deployment host already belongs to
+// a different application. Prefixing here rather than at each call site means no
+// endpoint can be added later that forgets to do it and quietly reaches the
+// wrong service. BASE_URL comes from the Vite base setting.
+const apiRoot = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
-  const response = await fetch(path, { ...init, headers, credentials: "include" });
+  const response = await fetch(`${apiRoot}${path}`, { ...init, headers, credentials: "include" });
   if (response.ok) {
     if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
