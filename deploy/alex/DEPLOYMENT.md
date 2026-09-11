@@ -7,15 +7,69 @@ Live demonstration run order: [DEMO.md](DEMO.md).
 
 ## Runtime layout
 
-`HTTPS /helpdesk/* -> Nginx -> host Express :3001 -> PostgreSQL 127.0.0.1:5433`
+```
+HTTPS /helpdesk/health          -> Nginx -> Express :3001
+HTTPS /helpdesk/ready           -> Nginx -> Express :3001
+HTTPS /helpdesk/api/*           -> Nginx -> Express :3001 -> PostgreSQL 127.0.0.1:5433
+HTTPS /helpdesk/*  (everything else) -> Nginx -> static shell in /var/www/helpdesk
+```
 
-- Nginx strips `/helpdesk/` and preserves the shared server's existing routes.
+- Nginx strips the matched prefix and preserves the shared server's existing routes.
+- Nginx selects a location by rule, not by file order: exact `=` first, then the
+  longest `^~` prefix. That is what stops the single-page application's catch-all
+  from swallowing the API. `/health` and `/ready` need their own exact locations,
+  or they would return the shell with status 200 and `deploy.sh` would report a
+  healthy release while the API was down.
 - Source/build: `/opt/campus-helpdesk`; service: `helpdesk`, non-root account `helpdesk`.
 - Use root `compose.yaml` plus `deploy/alex/compose.postgres.override.yaml`; retain the
   same Compose project name and database volume across releases.
 - Production secrets load through Key Vault using the VM's managed identity.
 - PostgreSQL publishes to loopback. Express validates and defaults to the loopback
   host; effective VM firewall and NSG isolation still need live verification.
+
+## Frontend
+
+The single-page application is built from `frontend/` and published by
+`deploy.sh` to `/var/www/helpdesk`, which Nginx serves directly. The application
+server never serves it. Publishing happens through a directory swap, so a
+half-copied build is never served, and the previous copy is removed only once
+the new one is in place.
+
+Caching is split deliberately: Vite fingerprints filenames under `assets/`, so
+those are immutable for a year, while `index.html` is `no-store`. Caching the
+shell would pin browsers to a bundle that the next release deletes.
+
+Client-side routes have no file on disk, so the shell location falls back with
+`try_files ... /helpdesk/index.html`. Without that, reloading a deep link such
+as `/helpdesk/tickets/5` returns 404.
+
+### Three settings the frontend must carry
+
+These live in `frontend/` rather than in this directory, and the deployment does
+not work without them. They matter because the application is served from a
+sub-path on a host that already runs other applications.
+
+1. **`base: "/helpdesk/"` in `vite.config.ts`.** Without it the built
+   `index.html` references `/assets/...` at the domain root, which is a
+   different application entirely.
+2. **A router basename of `/helpdesk`.** Otherwise client-side navigation
+   produces URLs outside the deployed path.
+3. **API calls prefixed with the base path.** `frontend/src/api.ts` currently
+   requests `/api/v1/...` as absolute paths. On this host `/api` is already
+   taken by another application, so in production those calls would reach the
+   wrong service and fail in a confusing way. Deriving the prefix from
+   `import.meta.env.BASE_URL` keeps the development proxy and the deployed path
+   consistent.
+
+Until those land, the application works through the Vite dev proxy and does not
+work when served from `/helpdesk/`.
+
+### The post-login destination
+
+`authenticationSuccessPath()` in `src/services/auth-cookie.ts` still redirects to
+`/helpdesk/api/v1/me`, so a completed Microsoft sign-in lands on raw JSON rather
+than the application. That destination should become the frontend root once the
+settings above are in place.
 
 ## Host and configuration
 
@@ -103,6 +157,9 @@ sudo install -m 0644 deploy/alex/journald/retention.conf /etc/systemd/journald@h
 sudo install -m 0644 deploy/alex/helpdesk.service /etc/systemd/system/helpdesk.service
 sudo install -d -m 0750 -o www-data -g adm /var/log/helpdesk-nginx
 sudo install -m 0644 deploy/alex/nginx/helpdesk.logging.conf /etc/nginx/conf.d/helpdesk.logging.conf
+sudo install -d -m 0755 /etc/nginx/snippets
+sudo install -m 0644 deploy/alex/nginx/helpdesk.proxy.conf /etc/nginx/snippets/helpdesk.proxy.conf
+sudo install -d -m 0755 /var/www/helpdesk
 sudo install -m 0644 deploy/alex/logrotate/helpdesk /etc/logrotate.d/helpdesk
 ```
 

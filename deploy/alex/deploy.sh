@@ -36,6 +36,8 @@ VAULT_URL="${KEY_VAULT_URL:-$(env_file_value KEY_VAULT_URL)}"
 PORT="${PORT:-$(env_file_value PORT)}"
 PORT="${PORT:-3001}"
 PUBLIC_HEALTH_URL="${PUBLIC_HEALTH_URL:-$(env_file_value PUBLIC_HEALTH_URL)}"
+PUBLIC_APP_URL="${PUBLIC_APP_URL:-$(env_file_value PUBLIC_APP_URL)}"
+WEB_ROOT="${WEB_ROOT:-/var/www/helpdesk}"
 
 [ -n "$VAULT_URL" ] || fail "KEY_VAULT_URL is set neither in the environment nor in $APP_DIR/.env"
 
@@ -115,6 +117,25 @@ DATABASE_URL="$DATABASE_URL" npm run build
 log "Applying database migrations"
 DATABASE_URL="$DATABASE_URL" npx prisma migrate deploy
 
+# --- Frontend ---------------------------------------------------------------
+if [ -d frontend ]; then
+  log "Building the single-page application"
+  ( cd frontend && npm ci && npm run build )
+  [ -f frontend/dist/index.html ] || fail "The frontend build produced no dist/index.html"
+
+  # Publish through a swap rather than copying over the live directory, so a
+  # half-copied build is never served.
+  log "Publishing the frontend to $WEB_ROOT"
+  sudo rm -rf "${WEB_ROOT}.new" "${WEB_ROOT}.old"
+  sudo install -d -m 0755 "${WEB_ROOT}.new"
+  sudo cp -a frontend/dist/. "${WEB_ROOT}.new/"
+  if [ -d "$WEB_ROOT" ]; then sudo mv "$WEB_ROOT" "${WEB_ROOT}.old"; fi
+  sudo mv "${WEB_ROOT}.new" "$WEB_ROOT"
+  sudo rm -rf "${WEB_ROOT}.old"
+else
+  log "No frontend directory in this checkout, skipping the application shell"
+fi
+
 # --- Release ---------------------------------------------------------------
 # npm ci replaces node_modules underneath the running process, so the restart
 # is required rather than optional.
@@ -151,6 +172,19 @@ if [ -n "$PUBLIC_HEALTH_URL" ]; then
   fi
 else
   echo "public /health : skipped (set PUBLIC_HEALTH_URL in the environment or .env)"
+fi
+
+# The shell is served by Nginx, not by the application, so a working API says
+# nothing about it. Checking for the module script tag also catches an empty or
+# partially published directory returning a bare 200.
+if [ -n "$PUBLIC_APP_URL" ]; then
+  if curl -fsS --max-time 10 "$PUBLIC_APP_URL" | grep -q '<script'; then
+    echo "public shell  : ok"
+  else
+    fail "The application shell at $PUBLIC_APP_URL did not return a usable page. Check the Nginx static locations and $WEB_ROOT."
+  fi
+else
+  echo "public shell  : skipped (set PUBLIC_APP_URL in the environment or .env)"
 fi
 
 log "Deployment complete"
