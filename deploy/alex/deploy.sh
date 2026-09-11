@@ -100,7 +100,13 @@ install_host_files() {
   install_if_changed deploy/alex/logrotate/helpdesk /etc/logrotate.d/helpdesk || true
 
   # The one line that cannot be installed automatically.
-  if ! sudo grep -rqs "helpdesk.locations.conf" /etc/nginx/sites-enabled/; then
+  #
+  # -R, not -r: on Debian and Ubuntu sites-enabled/default is a symlink into
+  # sites-available, and grep -r skips symlinks it meets while recursing, so it
+  # would report the include missing on a correctly configured host. Several
+  # paths are searched because the server block does not have to live in
+  # sites-enabled.
+  if ! sudo grep -Rqs "helpdesk.locations.conf"       /etc/nginx/sites-enabled/ /etc/nginx/sites-available/       /etc/nginx/conf.d/ /etc/nginx/nginx.conf; then
     fail "No Nginx server block includes the HelpDesk locations. Add this line inside the HTTPS server block for this host, then run the deployment again:
 
     include snippets/helpdesk.locations.conf;"
