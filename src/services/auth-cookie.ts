@@ -65,11 +65,18 @@ export function clearAuthenticationCookie(response: Response): void {
   response.clearCookie(AUTHENTICATION_COOKIE, cookieOptions());
 }
 
+/**
+ * Where the browser lands after a successful Microsoft sign-in.
+ *
+ * The application root, not the /me endpoint: the frontend is deployed and a
+ * completed sign-in should arrive in the application rather than on raw JSON.
+ * The trailing slash is deliberate. Redirecting to the base path without it
+ * matches the convenience redirect in the Nginx locations and costs an extra
+ * 301 hop before the shell loads.
+ */
 export function authenticationSuccessPath(): string {
   const basePath = publicBasePath();
-  return basePath === "/"
-    ? "/api/v1/me"
-    : `${basePath}/api/v1/me`;
+  return basePath === "/" ? "/" : `${basePath}/`;
 }
 
 export function authenticationCookiePath(): string {
