@@ -8,7 +8,7 @@ export interface EmailResult {
   providerMessageId?: string;
 }
 
-/** Console and Brevo implementations will follow this contract. */
+/** Console and Brevo implementations share this contract. */
 export interface EmailProvider {
   send(message: EmailMessage): Promise<EmailResult>;
 }

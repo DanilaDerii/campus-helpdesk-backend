@@ -2,15 +2,12 @@ import { ConfidentialClientApplication } from "@azure/msal-node";
 import type {
   ExternalIdentity,
   IdentityProvider,
-} from "../../providers/identity/identity-provider.js";
-import { configuredSecretProvider } from "../../providers/secrets/configured-secret-provider.js";
+} from "./identity-provider.js";
+import { configuredSecretProvider } from "../secrets/configured-secret-provider.js";
 
 /**
- * Microsoft Entra ID identity provider.
- *
- * Runs the OpenID Connect authorization-code flow with MSAL. Microsoft proves
- * who the person is; the local database still decides what they may do, so no
- * role or group claim from Microsoft is trusted here.
+ * Microsoft Entra ID sign-in (authorization code flow with PKCE, via MSAL).
+ * Microsoft proves identity only; roles come from the local database.
  */
 
 export interface EntraConfiguration {
@@ -49,13 +46,7 @@ function readEnvironment(name: string): string | undefined {
   return value === "" ? undefined : value;
 }
 
-/**
- * Reads Entra settings from non-secret configuration. The client secret is not
- * read here: it comes from the secret provider when the client is first built.
- *
- * Default scopes are the standard OpenID Connect sign-in scopes. If a tenant
- * rejects them, set ENTRA_SCOPES to a delegated scope such as "User.Read".
- */
+/** Non-secret Entra settings. The client secret is read on first use. */
 export function readEntraConfiguration(): EntraConfiguration {
   const tenantId = readEnvironment("ENTRA_TENANT_ID");
   const clientId = readEnvironment("ENTRA_CLIENT_ID");
@@ -82,10 +73,6 @@ export class EntraIdentityProvider implements IdentityProvider {
 
   constructor(private readonly configuration: EntraConfiguration) {}
 
-  /**
-   * Built on first use rather than in a constructor, because the client secret
-   * has to be awaited from Key Vault.
-   */
   private getClient(): Promise<ConfidentialClientApplication> {
     if (!this.client) {
       const lookup = configuredSecretProvider
@@ -113,7 +100,6 @@ export class EntraIdentityProvider implements IdentityProvider {
     return this.client;
   }
 
-  /** The Microsoft sign-in URL to redirect the browser to. */
   async getAuthorizationUrl(
     state: string,
     codeChallenge: string,
@@ -129,11 +115,7 @@ export class EntraIdentityProvider implements IdentityProvider {
     });
   }
 
-  /**
-   * Exchange the authorization code for tokens and normalize the result.
-   * MSAL validates the returned token, including its signature, issuer,
-   * audience and expiry.
-   */
+  /** Exchanges the code for tokens; MSAL validates the returned ID token. */
   async completeLogin(input: unknown): Promise<ExternalIdentity> {
     if (
       typeof input !== "object" ||
@@ -159,9 +141,6 @@ export class EntraIdentityProvider implements IdentityProvider {
 
     const claims = (result.idTokenClaims ?? {}) as EntraIdTokenClaims;
 
-    // Defence in depth: the application is registered single-tenant, so
-    // Microsoft already refuses other directories, but do not rely on that
-    // registration staying single-tenant.
     if (claims.tid !== this.configuration.tenantId) {
       throw new Error("This account belongs to a different directory");
     }
@@ -183,11 +162,7 @@ export class EntraIdentityProvider implements IdentityProvider {
 
 let cachedProvider: EntraIdentityProvider | undefined;
 
-/**
- * Built lazily on first request. The routes are always mounted, including in
- * development where no Entra settings exist, so construction must not happen
- * at module load.
- */
+/** Built lazily so development, which has no Entra settings, still starts. */
 export function getEntraIdentityProvider(): EntraIdentityProvider {
   cachedProvider ??= new EntraIdentityProvider(readEntraConfiguration());
   return cachedProvider;

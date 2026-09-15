@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
 #
-# Repeatable release for the Campus HelpDesk API on the project VM.
+# Release the Campus HelpDesk on the VM:  ./deploy/deploy.sh [git-ref]
 #
-#   ./deploy/alex/deploy.sh [git-ref]
-#
-# The database connection string is read from Azure Key Vault at deploy time
-# using the VM's managed identity and is passed only to the commands that need
-# it. It is never written to disk and never printed. The Prisma CLI cannot read
-# Key Vault itself, which is why this indirection exists.
-#
-# See deploy/alex/DEPLOYMENT.md for one-time setup and troubleshooting.
+# DATABASE_URL is read from Key Vault through the VM's managed identity and is
+# passed only to the build and migration commands. It is never written or printed.
 
 set -euo pipefail
 
@@ -20,13 +14,7 @@ APP_DIR="${APP_DIR:-/opt/campus-helpdesk}"
 SERVICE="${SERVICE:-helpdesk}"
 GIT_REF="${1:-}"
 
-# Read one non-secret setting out of the application's own .env.
-#
-# This matters: the application reads .env on the VM. If this script relied on
-# its own built-in defaults it could deploy against a different Key Vault, or
-# health-check a different port, than the service actually uses. Settings
-# resolve as exported shell variable, then .env, then a safe default. Secrets
-# are never read from here; they still come from Key Vault.
+# Non-secret settings: exported variable, then the application's .env, then a default.
 env_file_value() {
   [ -f "$APP_DIR/.env" ] || return 0
   sed -n "s/^[[:space:]]*$1=//p" "$APP_DIR/.env" | tail -n 1 | sed 's/^"//; s/"$//'
@@ -47,7 +35,7 @@ command -v node >/dev/null    || fail "node is not installed"
 command -v python3 >/dev/null || fail "python3 is not installed (used to parse JSON)"
 cd "$APP_DIR"
 
-# --- Read a secret from Key Vault via the VM's managed identity -------------
+# --- Key Vault -------------------------------------------------------------
 vault_secret() {
   local name="$1" token
   token="$(curl -fsS -H Metadata:true --max-time 10 \
@@ -61,18 +49,8 @@ vault_secret() {
 }
 
 # --- Host configuration files ----------------------------------------------
-#
-# The repository is the source of truth for these. They used to be copied by
-# hand, which meant a file could silently go missing: a deleted logging
-# configuration broke every Nginx reload, and nothing in the release process
-# would have noticed until the next one failed.
-#
-# The Nginx locations install as a snippet rather than being pasted into the
-# server block, because that block also serves unrelated applications and must
-# not be rewritten by a script. The server block needs exactly one line, added
-# once by hand:
-#
-#   include snippets/helpdesk.locations.conf;
+# Installed from deploy/ on every release. The HTTPS server block needs one
+# manual line:  include snippets/helpdesk.locations.conf;
 
 install_if_changed() {
   local source="$1" destination="$2" mode="${3:-0644}"
@@ -92,21 +70,15 @@ install_host_files() {
   sudo install -d -m 0755 /etc/nginx/snippets /var/www/helpdesk /etc/systemd/journald@helpdesk.conf.d
   sudo install -d -m 0750 -o www-data -g adm /var/log/helpdesk-nginx
 
-  if install_if_changed deploy/alex/nginx/helpdesk.logging.conf /etc/nginx/conf.d/helpdesk.logging.conf; then nginx_changed=1; fi
-  if install_if_changed deploy/alex/nginx/helpdesk.proxy.conf /etc/nginx/snippets/helpdesk.proxy.conf; then nginx_changed=1; fi
-  if install_if_changed deploy/alex/nginx/helpdesk.location.conf /etc/nginx/snippets/helpdesk.locations.conf; then nginx_changed=1; fi
-  if install_if_changed deploy/alex/journald/retention.conf /etc/systemd/journald@helpdesk.conf.d/retention.conf; then systemd_changed=1; fi
-  if install_if_changed deploy/alex/helpdesk.service /etc/systemd/system/helpdesk.service; then systemd_changed=1; fi
-  install_if_changed deploy/alex/logrotate/helpdesk /etc/logrotate.d/helpdesk || true
+  if install_if_changed deploy/nginx/helpdesk.logging.conf /etc/nginx/conf.d/helpdesk.logging.conf; then nginx_changed=1; fi
+  if install_if_changed deploy/nginx/helpdesk.proxy.conf /etc/nginx/snippets/helpdesk.proxy.conf; then nginx_changed=1; fi
+  if install_if_changed deploy/nginx/helpdesk.location.conf /etc/nginx/snippets/helpdesk.locations.conf; then nginx_changed=1; fi
+  if install_if_changed deploy/journald/retention.conf /etc/systemd/journald@helpdesk.conf.d/retention.conf; then systemd_changed=1; fi
+  if install_if_changed deploy/helpdesk.service /etc/systemd/system/helpdesk.service; then systemd_changed=1; fi
+  install_if_changed deploy/logrotate/helpdesk /etc/logrotate.d/helpdesk || true
 
-  # The one line that cannot be installed automatically.
-  #
-  # -R, not -r: on Debian and Ubuntu sites-enabled/default is a symlink into
-  # sites-available, and grep -r skips symlinks it meets while recursing, so it
-  # would report the include missing on a correctly configured host. Several
-  # paths are searched because the server block does not have to live in
-  # sites-enabled.
-  if ! sudo grep -Rqs "helpdesk.locations.conf"       /etc/nginx/sites-enabled/ /etc/nginx/sites-available/       /etc/nginx/conf.d/ /etc/nginx/nginx.conf; then
+  # -R follows the sites-enabled symlink; -r would not.
+  if ! sudo grep -Rqs "helpdesk.locations.conf" /etc/nginx/sites-enabled/ /etc/nginx/sites-available/ /etc/nginx/conf.d/ /etc/nginx/nginx.conf; then
     fail "No Nginx server block includes the HelpDesk locations. Add this line inside the HTTPS server block for this host, then run the deployment again:
 
     include snippets/helpdesk.locations.conf;"
@@ -126,7 +98,7 @@ install_host_files() {
   fi
 }
 
-# --- Refuse to deploy with production secrets sitting in .env ---------------
+# --- Refuse production secrets in .env -------------------------------------
 if [ -f .env ] && grep -qE '^(DATABASE_URL|JWT_SECRET|BREVO_API_KEY|ENTRA_CLIENT_SECRET)=' .env; then
   if grep -qE '^NODE_ENV=production' .env; then
     fail ".env contains a production secret while NODE_ENV=production. Secrets must come from Key Vault; remove those lines."
@@ -141,9 +113,7 @@ if [ -n "$GIT_REF" ]; then
   git checkout "$GIT_REF"
 fi
 
-# Only fast-forward when HEAD is on a branch. Checking out a commit, which is
-# exactly what the documented rollback does, leaves a detached HEAD where
-# "git pull" fails and would otherwise abort the whole deployment.
+# A pinned commit (rollback) leaves a detached HEAD, where pull would fail.
 if git symbolic-ref -q HEAD >/dev/null; then
   git pull --ff-only
 else
@@ -158,26 +128,20 @@ DATABASE_URL="$(vault_secret helpdesk-database-url)"
 echo "ok (value not shown)"
 
 # --- Database --------------------------------------------------------------
-# Derive the container password from the same connection string the application
-# uses, so deployment settings cannot drift from application settings. Without
-# this the Compose override falls back to its development default while the
-# application authenticates with whatever the vault holds.
-#
-# PostgreSQL applies this only when initialising an empty data directory, so it
-# keeps new deployments consistent rather than rotating an existing one. A real
-# mismatch surfaces loudly at the migration step below.
+# The container password comes from the same URL the application uses. PostgreSQL
+# applies it only when initialising an empty volume.
 POSTGRES_PASSWORD="$(python3 -c 'import sys,urllib.parse as u; print(u.unquote(u.urlparse(sys.argv[1]).password or ""))' "$DATABASE_URL")"
 [ -n "$POSTGRES_PASSWORD" ] || fail "helpdesk-database-url has no password component"
 export POSTGRES_PASSWORD
 
 log "Ensuring PostgreSQL is running"
-sudo -E docker compose -f compose.yaml -f deploy/alex/compose.postgres.override.yaml up -d postgres
+sudo -E docker compose -f compose.yaml -f deploy/compose.postgres.override.yaml up -d postgres
 
 # --- Build -----------------------------------------------------------------
 log "Installing dependencies"
 npm ci
 
-log "Building (prisma generate needs DATABASE_URL in the environment)"
+log "Building"
 DATABASE_URL="$DATABASE_URL" npm run build
 
 log "Applying database migrations"
@@ -189,8 +153,7 @@ if [ -d frontend ]; then
   ( cd frontend && npm ci && npm run build )
   [ -f frontend/dist/index.html ] || fail "The frontend build produced no dist/index.html"
 
-  # Publish through a swap rather than copying over the live directory, so a
-  # half-copied build is never served.
+  # Publish through a directory swap so a half-copied build is never served.
   log "Publishing the frontend to $WEB_ROOT"
   sudo rm -rf "${WEB_ROOT}.new" "${WEB_ROOT}.old"
   sudo install -d -m 0755 "${WEB_ROOT}.new"
@@ -206,8 +169,7 @@ log "Installing host configuration files"
 install_host_files
 
 # --- Release ---------------------------------------------------------------
-# npm ci replaces node_modules underneath the running process, so the restart
-# is required rather than optional.
+# npm ci replaced node_modules under the running process, so a restart is required.
 log "Restarting $SERVICE"
 sudo systemctl restart "$SERVICE"
 
@@ -223,16 +185,12 @@ done
 echo "local  /health : $(curl -fsS "http://127.0.0.1:${PORT}/health")"
 echo "service        : $(systemctl is-active "$SERVICE")"
 
-# /health answers without touching PostgreSQL, so a green health check says
-# nothing about the database. /ready runs a real query, which is what catches a
-# database that did not come back after a reboot.
+# /health checks the process only; /ready also queries PostgreSQL.
 if ! curl -fsS --max-time 10 "http://127.0.0.1:${PORT}/ready" >/dev/null; then
   fail "The service is up but /ready failed, so the database is not reachable. Check: journalctl --namespace=helpdesk -u $SERVICE -n 30 --no-pager"
 fi
 echo "local  /ready  : ok (database reachable)"
 
-# A failed public check is a failed deployment, not a footnote. Announcing
-# success while the public URL is down is exactly how a broken release ships.
 if [ -n "$PUBLIC_HEALTH_URL" ]; then
   if curl -fsS --max-time 10 "$PUBLIC_HEALTH_URL" >/dev/null; then
     echo "public /health : ok"
@@ -243,9 +201,7 @@ else
   echo "public /health : skipped (set PUBLIC_HEALTH_URL in the environment or .env)"
 fi
 
-# The shell is served by Nginx, not by the application, so a working API says
-# nothing about it. Checking for the module script tag also catches an empty or
-# partially published directory returning a bare 200.
+# The shell is served by Nginx, so check it separately from the API.
 if [ -n "$PUBLIC_APP_URL" ]; then
   if curl -fsS --max-time 10 "$PUBLIC_APP_URL" | grep -q '<script'; then
     echo "public shell  : ok"

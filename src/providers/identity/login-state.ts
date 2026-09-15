@@ -5,19 +5,11 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
-import { configuredSecretProvider } from "../../providers/secrets/configured-secret-provider.js";
+import { configuredSecretProvider } from "../secrets/configured-secret-provider.js";
 
 /**
- * OAuth state handling for the Microsoft login flow.
- *
- * The state parameter proves that a callback belongs to a sign-in this server
- * actually started, which is what prevents login cross-site request forgery.
- * The application has no session store, so instead of keeping state in memory
- * it is encoded as a short-lived signed token. That is stateless, survives a
- * service restart in the middle of a login, and needs no extra dependency.
- *
- * A distinct audience keeps these tokens from being usable as access tokens
- * even though both are signed with the same secret.
+ * OAuth state for Microsoft login, kept as a short-lived signed token so no
+ * session store is needed. Its own audience makes it unusable as an access token.
  */
 const STATE_ISSUER = "campus-helpdesk";
 const STATE_AUDIENCE = "campus-helpdesk-login-state";

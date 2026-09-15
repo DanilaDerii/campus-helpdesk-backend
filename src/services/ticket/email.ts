@@ -1,5 +1,5 @@
-import { createProductionEmailProvider } from "../../alex/email/index.js";
 import { logEvent, safeErrorDetails } from "../../logging/logger.js";
+import { createBrevoEmailProvider } from "../../providers/email/brevo-email-provider.js";
 import { ConsoleEmailProvider } from "../../providers/email/console-email-provider.js";
 import type {
   EmailMessage,
@@ -20,7 +20,7 @@ export interface TicketNotification {
 }
 
 const emailProvider: EmailProvider = process.env.NODE_ENV === "production"
-  ? createProductionEmailProvider()
+  ? createBrevoEmailProvider()
   : new ConsoleEmailProvider();
 
 function buildEmailMessage(notification: TicketNotification): EmailMessage {

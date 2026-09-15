@@ -15,8 +15,6 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    // Declares import.meta.env, which carries BASE_URL. The router and the API
-    // client both read it so the deployed sub-path is configured in one place.
     "types": ["vite/client"]
   },
   "include": ["src"]

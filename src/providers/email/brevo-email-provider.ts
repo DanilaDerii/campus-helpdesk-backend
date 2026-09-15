@@ -2,8 +2,8 @@ import type {
   EmailMessage,
   EmailProvider,
   EmailResult,
-} from "../../providers/email/email-provider.js";
-import { configuredSecretProvider } from "../../providers/secrets/configured-secret-provider.js";
+} from "./email-provider.js";
+import { configuredSecretProvider } from "../secrets/configured-secret-provider.js";
 
 const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
 const BREVO_API_KEY_SECRET = "BREVO_API_KEY";
@@ -19,27 +19,21 @@ interface BrevoResponse {
 }
 
 /**
- * Production email provider backed by the Brevo transactional email API.
- *
- * Failures are thrown rather than absorbed: the notification service records
- * the attempt as FAILED and its retry worker tries again later. Nothing here
- * logs the API key, the authorization header, or the message body.
+ * Sends email through the Brevo transactional API. Failures are thrown; the
+ * caller logs them. The API key and message body are never logged.
  */
 class BrevoEmailProvider implements EmailProvider {
-  /** Cached in-flight or resolved API key lookup. */
   private apiKeyLookup?: Promise<string>;
 
   constructor(private readonly sender: BrevoSender) {}
 
   private getApiKey(): Promise<string> {
     if (!this.apiKeyLookup) {
-      // Read on first use, because the factory below must stay synchronous.
       const lookup = configuredSecretProvider.get(BREVO_API_KEY_SECRET);
       this.apiKeyLookup = lookup;
 
+      // Do not cache a failed lookup.
       void lookup.catch(() => {
-        // Never cache a failed lookup, or one transient secret-store error
-        // would disable email for the lifetime of the process.
         if (this.apiKeyLookup === lookup) {
           this.apiKeyLookup = undefined;
         }
@@ -88,13 +82,8 @@ class BrevoEmailProvider implements EmailProvider {
   }
 }
 
-/**
- * Builds the Brevo provider. Called at module load by the notification
- * service, so it must stay synchronous: only non-secret sender settings are
- * validated here, and the API key is fetched from the secret provider on the
- * first send.
- */
-export function createProductionEmailProvider(): EmailProvider {
+/** Validates sender settings; the API key is read from secrets on first send. */
+export function createBrevoEmailProvider(): EmailProvider {
   const email = process.env.BREVO_SENDER_EMAIL?.trim();
   const name = process.env.BREVO_SENDER_NAME?.trim() || "Campus HelpDesk";
 

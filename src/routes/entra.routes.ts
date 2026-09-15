@@ -1,24 +1,24 @@
 import { Router, type RequestHandler } from "express";
-import { HttpError } from "../../errors/http-error.js";
-import type { ExternalIdentity } from "../../providers/identity/identity-provider.js";
+import { HttpError } from "../errors/http-error.js";
+import type { ExternalIdentity } from "../providers/identity/identity-provider.js";
 import {
   AuthenticationError,
   authenticationCookiePath,
   authenticationSuccessPath,
   completeExternalLogin,
   setAuthenticationCookie,
-} from "../../services/auth/index.js";
+} from "../services/auth/index.js";
 import {
   EntraNotConfiguredError,
   getEntraIdentityProvider,
-} from "./entra-identity-provider.js";
+} from "../providers/identity/entra-identity-provider.js";
 import {
   createLoginTransaction,
   InvalidLoginStateError,
   verifyLoginState,
-} from "./login-state.js";
+} from "../providers/identity/login-state.js";
 
-export const alexAuthRoutes = Router();
+export const entraAuthRoutes = Router();
 
 const LOGIN_COOKIE = "helpdesk_login";
 const LOGIN_COOKIE_LIFETIME_MS = 10 * 60 * 1000;
@@ -79,8 +79,7 @@ function toRouteError(error: unknown): HttpError | AuthenticationError {
   }
 
   if (error instanceof EntraNotConfiguredError) {
-    // Expected in development, where no Entra settings exist and the
-    // development login is used instead.
+    // Expected in development, where Entra is not configured.
     return new HttpError(503, "MICROSOFT_LOGIN_UNAVAILABLE", error.message);
   }
 
@@ -88,8 +87,7 @@ function toRouteError(error: unknown): HttpError | AuthenticationError {
     return new HttpError(400, "INVALID_LOGIN_STATE", error.message);
   }
 
-  // Microsoft and MSAL failures are reported without their internals, which
-  // can carry request identifiers and correlation data.
+  // Hide Microsoft and MSAL internals from the client.
   return new HttpError(
     502,
     "MICROSOFT_LOGIN_FAILED",
@@ -175,5 +173,5 @@ const completeMicrosoftLogin: RequestHandler = async (
   }
 };
 
-alexAuthRoutes.get("/login", startMicrosoftLogin);
-alexAuthRoutes.get("/callback", completeMicrosoftLogin);
+entraAuthRoutes.get("/login", startMicrosoftLogin);
+entraAuthRoutes.get("/callback", completeMicrosoftLogin);

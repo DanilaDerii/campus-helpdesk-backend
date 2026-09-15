@@ -1,10 +1,10 @@
-import { createProductionSecretProvider } from "../../alex/secrets/index.js";
 import { EnvSecretProvider } from "./env-secret-provider.js";
+import { createKeyVaultSecretProvider } from "./key-vault-secret-provider.js";
 import type { SecretProvider } from "./secret-provider.js";
 
 function createSecretProvider(): SecretProvider {
   if (process.env.NODE_ENV === "production") {
-    return createProductionSecretProvider();
+    return createKeyVaultSecretProvider();
   }
 
   return new EnvSecretProvider();

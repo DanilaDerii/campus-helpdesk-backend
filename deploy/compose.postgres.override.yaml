@@ -1,0 +1,18 @@
+# Production additions to compose.yaml (same project and data volume):
+#   docker compose -f compose.yaml -f deploy/compose.postgres.override.yaml up -d postgres
+#
+# POSTGRES_PASSWORD applies only to a new, empty volume. deploy.sh derives it
+# from the Key Vault database URL.
+
+services:
+  postgres:
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-helpdesk_dev}
