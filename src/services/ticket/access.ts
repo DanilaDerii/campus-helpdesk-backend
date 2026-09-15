@@ -2,7 +2,7 @@ import {
   Role,
   TicketStatus,
 } from "../../../generated/prisma/client.js";
-import type { AuthenticatedUser } from "../auth.service.js";
+import type { AuthenticatedUser } from "../auth/index.js";
 import { TicketServiceError } from "./errors.js";
 
 interface TicketAccessFields {
@@ -13,7 +13,6 @@ interface TicketAccessFields {
 
 const ticketCreatorRoles = new Set<Role>([
   Role.STUDENT,
-  Role.FACULTY,
   Role.ADMIN,
 ]);
 

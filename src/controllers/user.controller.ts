@@ -4,7 +4,7 @@ import {
   getUsersForAdministrator,
   updateUserForAdministrator,
   type UserAdministrationUpdate,
-} from "../services/user.service.js";
+} from "../services/auth/index.js";
 import {
   hasOwnField,
   readBooleanValue,

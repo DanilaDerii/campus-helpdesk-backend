@@ -16,7 +16,6 @@ export function AppLayout() {
       <Link className="brand" to="/">Campus <strong>Helpdesk</strong></Link>
       <nav>
         <NavLink to="/">Tickets</NavLink>
-        {isAdmin && <NavLink to="/categories">Categories</NavLink>}
         {isAdmin && <NavLink to="/users">Users</NavLink>}
       </nav>
       <div className="account"><span>{user?.displayName}<small>{user?.role}</small></span><button className="button button-quiet" onClick={() => void handleLogout()}>Sign out</button></div>

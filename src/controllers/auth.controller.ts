@@ -1,9 +1,9 @@
 import type { RequestHandler } from "express";
 import {
   clearAuthenticationCookie,
+  developmentLogin,
   setAuthenticationCookie,
-} from "../services/auth-cookie.js";
-import { developmentLogin } from "../services/auth.service.js";
+} from "../services/auth/index.js";
 import {
   readRequestObject,
   readStringValue,

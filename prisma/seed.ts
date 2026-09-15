@@ -20,12 +20,6 @@ const developmentUsers = [
     role: Role.STUDENT,
   },
   {
-    microsoftOid: "dev-faculty-001",
-    email: "faculty@helpdesk.local",
-    displayName: "Development Faculty",
-    role: Role.FACULTY,
-  },
-  {
     microsoftOid: "dev-technician-001",
     email: "technician@helpdesk.local",
     displayName: "Development Technician",
@@ -36,25 +30,6 @@ const developmentUsers = [
     email: "admin@helpdesk.local",
     displayName: "Development Administrator",
     role: Role.ADMIN,
-  },
-] as const;
-
-const ticketCategories = [
-  {
-    name: "IT Support",
-    description: "Computers, accounts, network, and software",
-  },
-  {
-    name: "Facilities",
-    description: "Rooms, furniture, electricity, and campus facilities",
-  },
-  {
-    name: "Registration",
-    description: "Course registration problems",
-  },
-  {
-    name: "General",
-    description: "HelpDesk requests that do not match another category",
   },
 ] as const;
 
@@ -75,18 +50,9 @@ async function seed() {
     });
   }
 
-  for (const category of ticketCategories) {
-    await prisma.ticketCategory.upsert({
-      where: { name: category.name },
-      update: { description: category.description },
-      create: category,
-    });
-  }
-
   logEvent("info", "database_seeded", {
     operation: "seed",
     users: developmentUsers.length,
-    categories: ticketCategories.length,
   });
 }
 

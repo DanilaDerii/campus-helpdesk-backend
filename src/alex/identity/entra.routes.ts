@@ -3,13 +3,11 @@ import { HttpError } from "../../errors/http-error.js";
 import type { ExternalIdentity } from "../../providers/identity/identity-provider.js";
 import {
   AuthenticationError,
-  completeExternalLogin,
-} from "../../services/auth.service.js";
-import {
   authenticationCookiePath,
   authenticationSuccessPath,
+  completeExternalLogin,
   setAuthenticationCookie,
-} from "../../services/auth-cookie.js";
+} from "../../services/auth/index.js";
 import {
   EntraNotConfiguredError,
   getEntraIdentityProvider,

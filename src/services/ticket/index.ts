@@ -1,20 +1,19 @@
+export { getCategories } from "./categories.js";
 export {
   assignTicketTechnician,
   changeTicketStatus,
   claimTicket,
   createTicket,
   type CreateTicketInput,
-} from "./ticket/commands.js";
+} from "./commands.js";
 export {
   addTicketComment,
-  getTicketCommentsForUser,
-} from "./ticket/comments.js";
+} from "./comments.js";
 export {
   TicketServiceError,
   type TicketServiceErrorCode,
-} from "./ticket/errors.js";
+} from "./errors.js";
 export {
   getTicketForUser,
-  getTicketHistoryForUser,
   listTicketsForUser,
-} from "./ticket/queries.js";
+} from "./queries.js";

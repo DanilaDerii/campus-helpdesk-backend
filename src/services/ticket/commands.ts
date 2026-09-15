@@ -3,28 +3,26 @@ import {
   TicketPriority,
   TicketStatus,
 } from "../../../generated/prisma/client.js";
-import { runInTransaction, type DatabaseClient } from "../../database/prisma.js";
 import {
-  assignTechnician,
-  claimOpenTicket,
-  createPendingNotification,
-  createTicketHistory,
   createTicketRecord,
   findCategoryById,
   findTicketAccessRecordById,
   findTicketById,
-  findTicketSummaryById,
   findUserById,
-  transitionTicketStatus,
-} from "../../repositories/index.js";
-import type { AuthenticatedUser } from "../auth.service.js";
+  updateTicketAssignment,
+  updateTicketStatus,
+} from "../../data_access/index.js";
+import type { AuthenticatedUser } from "../auth/index.js";
+import {
+  sendTicketNotification,
+  type TicketNotification,
+} from "./email.js";
 import {
   requireTicketAssignmentAccess,
   requireTicketClaimAccess,
   requireTicketCreationAccess,
   requireTicketStatusChangeAccess,
 } from "./access.js";
-import { deliverAfterCommit } from "./delivery.js";
 import { TicketServiceError } from "./errors.js";
 
 export interface CreateTicketInput {
@@ -35,41 +33,39 @@ export interface CreateTicketInput {
   priority?: TicketPriority;
 }
 
+type NotificationDetails = Pick<
+  TicketNotification,
+  "recipientEmail" | "notificationType"
+>;
+
 async function getTicketResult(ticketId: number) {
   const ticket = await findTicketById(ticketId);
+
   if (!ticket) {
     throw new TicketServiceError(
-      "TICKET_NOT_FOUND", "The requested ticket does not exist",
+      "TICKET_NOT_FOUND",
+      "The requested ticket does not exist",
     );
   }
+
   return ticket;
 }
 
-async function finishTicketCommand(result: {
-  ticketId: number;
-  notificationId?: number;
-}) {
-  const ticket = await getTicketResult(result.ticketId);
-  return deliverAfterCommit({ value: ticket, notificationId: result.notificationId });
-}
+async function finishTicketCommand(
+  ticketId: number,
+  notification?: NotificationDetails,
+) {
+  const ticket = await getTicketResult(ticketId);
 
-async function finishTicketCreation(result: {
-  ticketId: number;
-  notificationId: number;
-}) {
-  const ticket = await findTicketSummaryById(result.ticketId);
-
-  if (!ticket) {
-    throw new TicketServiceError(
-      "TICKET_NOT_FOUND", "The new ticket could not be loaded",
-    );
+  if (notification) {
+    await sendTicketNotification({ ...notification, ticket });
   }
 
-  return deliverAfterCommit({ value: ticket, notificationId: result.notificationId });
+  return ticket;
 }
 
-async function getUserEmail(userId: number, database: DatabaseClient) {
-  const user = await findUserById(userId, database);
+async function getUserEmail(userId: number): Promise<string> {
+  const user = await findUserById(userId);
 
   if (!user) {
     throw new TicketServiceError(
@@ -96,42 +92,19 @@ export async function createTicket(
     );
   }
 
-  const result = await runInTransaction(async (transaction) => {
-    const ticket = await createTicketRecord(
-      {
-        requesterId: currentUser.id,
-        categoryId: category.id,
-        title: input.title,
-        description: input.description,
-        location: input.location,
-        priority: input.priority,
-      },
-      transaction,
-    );
-
-    await createTicketHistory(
-      {
-        ticketId: ticket.id,
-        changedById: currentUser.id,
-        action: "CREATED",
-        newValue: ticket.status,
-      },
-      transaction,
-    );
-
-    const notification = await createPendingNotification(
-      {
-        ticketId: ticket.id,
-        recipientEmail: currentUser.email,
-        notificationType: "TICKET_CREATED",
-      },
-      transaction,
-    );
-
-    return { ticketId: ticket.id, notificationId: notification.id };
+  const ticket = await createTicketRecord({
+    requesterId: currentUser.id,
+    categoryId: category.id,
+    title: input.title,
+    description: input.description,
+    location: input.location,
+    priority: input.priority,
   });
 
-  return finishTicketCreation(result);
+  return finishTicketCommand(ticket.id, {
+    recipientEmail: currentUser.email,
+    notificationType: "TICKET_CREATED",
+  });
 }
 
 export async function claimTicket(
@@ -140,81 +113,35 @@ export async function claimTicket(
 ) {
   requireTicketClaimAccess(currentUser);
 
-  const result = await runInTransaction(async (transaction) => {
-    const claimed = await claimOpenTicket(
-      ticketId,
-      currentUser.id,
-      transaction,
+  const ticket = await findTicketAccessRecordById(ticketId);
+
+  if (!ticket) {
+    throw new TicketServiceError(
+      "TICKET_NOT_FOUND",
+      "The requested ticket does not exist",
     );
+  }
 
-    if (!claimed) {
-      const existingTicket = await findTicketAccessRecordById(ticketId, transaction);
-
-      if (!existingTicket) {
-        throw new TicketServiceError(
-          "TICKET_NOT_FOUND",
-          "The requested ticket does not exist",
-        );
-      }
-
-      if (existingTicket.assignedTechnicianId !== null) {
-        throw new TicketServiceError(
-          "TICKET_ALREADY_ASSIGNED",
-          "This ticket is already assigned",
-        );
-      }
-
-      throw new TicketServiceError(
-        "TICKET_NOT_CLAIMABLE",
-        "Only open tickets can be claimed",
-      );
-    }
-
-    const ticket = await findTicketAccessRecordById(ticketId, transaction);
-
-    if (!ticket) {
-      throw new TicketServiceError(
-        "TICKET_NOT_FOUND",
-        "The requested ticket does not exist",
-      );
-    }
-
-    const requesterEmail = await getUserEmail(ticket.requesterId, transaction);
-
-    await createTicketHistory(
-      {
-        ticketId,
-        changedById: currentUser.id,
-        action: "ASSIGNED",
-        newValue: String(currentUser.id),
-      },
-      transaction,
+  if (ticket.assignedTechnicianId !== null) {
+    throw new TicketServiceError(
+      "TICKET_ALREADY_ASSIGNED",
+      "This ticket is already assigned",
     );
+  }
 
-    await createTicketHistory(
-      {
-        ticketId,
-        changedById: currentUser.id,
-        action: "STATUS_CHANGED",
-        oldValue: TicketStatus.OPEN,
-        newValue: TicketStatus.IN_PROGRESS,
-      },
-      transaction,
+  if (ticket.status !== TicketStatus.OPEN) {
+    throw new TicketServiceError(
+      "TICKET_NOT_CLAIMABLE",
+      "Only open tickets can be claimed",
     );
+  }
 
-    const notification = await createPendingNotification(
-      {
-        ticketId,
-        recipientEmail: requesterEmail,
-        notificationType: "TICKET_ASSIGNED",
-      },
-      transaction,
-    );
+  await updateTicketAssignment(ticketId, currentUser.id);
 
-    return { ticketId, notificationId: notification.id };
+  return finishTicketCommand(ticketId, {
+    recipientEmail: await getUserEmail(ticket.requesterId),
+    notificationType: "TICKET_ASSIGNED",
   });
-
-  return finishTicketCommand(result);
 }
 
 export async function assignTicketTechnician(
@@ -224,123 +151,49 @@ export async function assignTicketTechnician(
 ) {
   requireTicketAssignmentAccess(currentUser);
 
-  const result = await runInTransaction(async (transaction) => {
-    const ticket = await findTicketAccessRecordById(ticketId, transaction);
-    const technician = await findUserById(technicianId, transaction);
+  const [ticket, technician] = await Promise.all([
+    findTicketAccessRecordById(ticketId),
+    findUserById(technicianId),
+  ]);
 
-    if (!ticket) {
-      throw new TicketServiceError(
-        "TICKET_NOT_FOUND",
-        "The requested ticket does not exist",
-      );
-    }
-
-    if (!technician) {
-      throw new TicketServiceError(
-        "TECHNICIAN_NOT_FOUND",
-        "The selected technician does not exist",
-      );
-    }
-
-    if (technician.role !== Role.TECHNICIAN || !technician.isActive) {
-      throw new TicketServiceError(
-        "INVALID_TECHNICIAN",
-        "The selected user is not an active technician",
-      );
-    }
-
-    if (ticket.status === TicketStatus.RESOLVED) {
-      throw new TicketServiceError(
-        "TICKET_ALREADY_RESOLVED",
-        "A resolved ticket cannot be assigned",
-      );
-    }
-
-    if (ticket.assignedTechnicianId === technicianId) {
-      return { ticketId };
-    }
-
-    const previousTechnicianId = ticket.assignedTechnicianId;
-    const previousStatus = ticket.status;
-
-    const assignmentChanged = await assignTechnician(
-      ticketId,
-      technicianId,
-      previousTechnicianId,
-      previousStatus,
-      transaction,
+  if (!ticket) {
+    throw new TicketServiceError(
+      "TICKET_NOT_FOUND",
+      "The requested ticket does not exist",
     );
+  }
 
-    if (!assignmentChanged) {
-      const currentTicket = await findTicketAccessRecordById(
-        ticketId,
-        transaction,
-      );
-
-      if (!currentTicket) {
-        throw new TicketServiceError(
-          "TICKET_NOT_FOUND",
-          "The requested ticket does not exist",
-        );
-      }
-
-      if (currentTicket.assignedTechnicianId === technicianId) {
-        return { ticketId };
-      }
-
-      if (currentTicket.status === TicketStatus.RESOLVED) {
-        throw new TicketServiceError(
-          "TICKET_ALREADY_RESOLVED",
-          "A resolved ticket cannot be assigned",
-        );
-      }
-
-      throw new TicketServiceError(
-        "TICKET_ASSIGNMENT_CONFLICT",
-        "The ticket assignment changed; reload and try again",
-      );
-    }
-
-    const requesterEmail = await getUserEmail(ticket.requesterId, transaction);
-
-    await createTicketHistory(
-      {
-        ticketId,
-        changedById: currentUser.id,
-        action: previousTechnicianId === null ? "ASSIGNED" : "REASSIGNED",
-        oldValue:
-          previousTechnicianId === null ? "" : String(previousTechnicianId),
-        newValue: String(technicianId),
-      },
-      transaction,
+  if (!technician) {
+    throw new TicketServiceError(
+      "TECHNICIAN_NOT_FOUND",
+      "The selected technician does not exist",
     );
+  }
 
-    if (previousStatus === TicketStatus.OPEN) {
-      await createTicketHistory(
-        {
-          ticketId,
-          changedById: currentUser.id,
-          action: "STATUS_CHANGED",
-          oldValue: TicketStatus.OPEN,
-          newValue: TicketStatus.IN_PROGRESS,
-        },
-        transaction,
-      );
-    }
-
-    const notification = await createPendingNotification(
-      {
-        ticketId,
-        recipientEmail: requesterEmail,
-        notificationType: "TICKET_ASSIGNED",
-      },
-      transaction,
+  if (technician.role !== Role.TECHNICIAN || !technician.isActive) {
+    throw new TicketServiceError(
+      "INVALID_TECHNICIAN",
+      "The selected user is not an active technician",
     );
+  }
 
-    return { ticketId, notificationId: notification.id };
+  if (ticket.status === TicketStatus.RESOLVED) {
+    throw new TicketServiceError(
+      "TICKET_ALREADY_RESOLVED",
+      "A resolved ticket cannot be assigned",
+    );
+  }
+
+  if (ticket.assignedTechnicianId === technicianId) {
+    return finishTicketCommand(ticketId);
+  }
+
+  await updateTicketAssignment(ticketId, technicianId);
+
+  return finishTicketCommand(ticketId, {
+    recipientEmail: await getUserEmail(ticket.requesterId),
+    notificationType: "TICKET_ASSIGNED",
   });
-
-  return finishTicketCommand(result);
 }
 
 export async function changeTicketStatus(
@@ -348,84 +201,48 @@ export async function changeTicketStatus(
   ticketId: number,
   newStatus: TicketStatus,
 ) {
-  const result = await runInTransaction(async (transaction) => {
-    const ticket = await findTicketAccessRecordById(ticketId, transaction);
+  const ticket = await findTicketAccessRecordById(ticketId);
 
-    if (!ticket) {
-      throw new TicketServiceError(
-        "TICKET_NOT_FOUND",
-        "The requested ticket does not exist",
-      );
-    }
-
-    requireTicketStatusChangeAccess(currentUser, ticket);
-
-    if (ticket.status === newStatus) {
-      return { ticketId };
-    }
-
-    if (ticket.status === TicketStatus.RESOLVED) {
-      throw new TicketServiceError(
-        "TICKET_ALREADY_RESOLVED",
-        "A resolved ticket cannot be reopened",
-      );
-    }
-
-    const transitionIsAllowed =
-      ticket.status === TicketStatus.OPEN
-        ? newStatus === TicketStatus.IN_PROGRESS ||
-          newStatus === TicketStatus.RESOLVED
-        : ticket.status === TicketStatus.IN_PROGRESS &&
-          newStatus === TicketStatus.RESOLVED;
-
-    if (!transitionIsAllowed) {
-      throw new TicketServiceError(
-        "INVALID_STATUS_TRANSITION",
-        `Ticket status cannot change from ${ticket.status} to ${newStatus}`,
-      );
-    }
-
-    const statusChanged = await transitionTicketStatus(
-      ticketId,
-      ticket.status,
-      newStatus,
-      transaction,
+  if (!ticket) {
+    throw new TicketServiceError(
+      "TICKET_NOT_FOUND",
+      "The requested ticket does not exist",
     );
+  }
 
-    if (!statusChanged) {
-      throw new TicketServiceError(
-        "TICKET_STATUS_CONFLICT",
-        "The ticket status was changed by another request; reload and try again",
-      );
-    }
+  requireTicketStatusChangeAccess(currentUser, ticket);
 
-    await createTicketHistory(
-      {
-        ticketId,
-        changedById: currentUser.id,
-        action: "STATUS_CHANGED",
-        oldValue: ticket.status,
-        newValue: newStatus,
-      },
-      transaction,
+  if (ticket.status === newStatus) {
+    return finishTicketCommand(ticketId);
+  }
+
+  if (ticket.status === TicketStatus.RESOLVED) {
+    throw new TicketServiceError(
+      "TICKET_ALREADY_RESOLVED",
+      "A resolved ticket cannot be reopened",
     );
+  }
 
-    const requesterEmail = await getUserEmail(ticket.requesterId, transaction);
+  const transitionIsAllowed =
+    ticket.status === TicketStatus.OPEN
+      ? newStatus === TicketStatus.IN_PROGRESS ||
+        newStatus === TicketStatus.RESOLVED
+      : ticket.status === TicketStatus.IN_PROGRESS &&
+        newStatus === TicketStatus.RESOLVED;
 
-    const notification = await createPendingNotification(
-      {
-        ticketId,
-        recipientEmail: requesterEmail,
-        notificationType:
-          newStatus === TicketStatus.RESOLVED
-            ? "TICKET_RESOLVED"
-            : "TICKET_UPDATED",
-      },
-      transaction,
+  if (!transitionIsAllowed) {
+    throw new TicketServiceError(
+      "INVALID_STATUS_TRANSITION",
+      `Ticket status cannot change from ${ticket.status} to ${newStatus}`,
     );
+  }
 
-    return { ticketId, notificationId: notification.id };
+  await updateTicketStatus(ticketId, newStatus);
+
+  return finishTicketCommand(ticketId, {
+    recipientEmail: await getUserEmail(ticket.requesterId),
+    notificationType: newStatus === TicketStatus.RESOLVED
+      ? "TICKET_RESOLVED"
+      : "TICKET_UPDATED",
   });
-
-  return finishTicketCommand(result);
 }

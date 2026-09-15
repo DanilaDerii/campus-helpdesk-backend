@@ -1,6 +1,6 @@
 import type { Request } from "express";
 import { HttpError } from "../errors/http-error.js";
-import type { AuthenticatedUser } from "../services/auth.service.js";
+import type { AuthenticatedUser } from "../services/auth/index.js";
 
 export type RequestObject = Record<string, unknown>;
 

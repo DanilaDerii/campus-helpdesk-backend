@@ -1,4 +1,4 @@
-import type { Category, ManagedUser, Ticket, TicketComment, TicketHistoryItem, TicketPriority, TicketStatus, User } from "./types";
+import type { Category, ManagedUser, Ticket, TicketComment, TicketPriority, TicketStatus, User } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -56,15 +56,8 @@ export const api = {
     request<{ ticket: Ticket }>(`/api/v1/tickets/${ticketId}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
   assignTicket: (ticketId: number, technicianId: number) =>
     request<{ ticket: Ticket }>(`/api/v1/tickets/${ticketId}/assignment`, { method: "PATCH", body: JSON.stringify({ technicianId }) }),
-  comments: (ticketId: number) => request<{ comments: TicketComment[] }>(`/api/v1/tickets/${ticketId}/comments`),
-  history: (ticketId: number) => request<{ history: TicketHistoryItem[] }>(`/api/v1/tickets/${ticketId}/history`),
   addComment: (ticketId: number, message: string) =>
     request<{ comment: TicketComment }>(`/api/v1/tickets/${ticketId}/comments`, { method: "POST", body: JSON.stringify({ message }) }),
-  createCategory: (body: { name: string; description?: string }) =>
-    request<{ category: Category }>("/api/v1/categories", { method: "POST", body: JSON.stringify(body) }),
-  updateCategory: (categoryId: number, body: { name?: string; description?: string }) =>
-    request<{ category: Category }>(`/api/v1/categories/${categoryId}`, { method: "PATCH", body: JSON.stringify(body) }),
-  deleteCategory: (categoryId: number) => request<void>(`/api/v1/categories/${categoryId}`, { method: "DELETE" }),
   updateUser: (userId: number, body: { role?: import("./types").Role; isActive?: boolean }) =>
     request<{ user: ManagedUser }>(`/api/v1/users/${userId}`, { method: "PATCH", body: JSON.stringify(body) }),
 };

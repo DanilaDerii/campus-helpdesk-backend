@@ -10,7 +10,6 @@ datasource db {
 
 enum Role {
   STUDENT
-  FACULTY
   TECHNICIAN
   ADMIN
 }
@@ -28,13 +27,6 @@ enum TicketPriority {
   URGENT
 }
 
-enum DeliveryStatus {
-  PENDING
-  SENT
-  FAILED
-  EXHAUSTED
-}
-
 model User {
   id           Int      @id @default(autoincrement())
   microsoftOid String   @unique @map("microsoft_oid") @db.VarChar(255)
@@ -48,7 +40,6 @@ model User {
   requestedTickets  Ticket[]        @relation("TicketRequester")
   assignedTickets   Ticket[]        @relation("AssignedTechnician")
   comments          TicketComment[]
-  historyChanges    TicketHistory[]
 
   @@map("users")
 }
@@ -81,8 +72,6 @@ model Ticket {
   assignedTechnician User?          @relation("AssignedTechnician", fields: [assignedTechnicianId], references: [id], onDelete: SetNull)
   category           TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   comments           TicketComment[]
-  history            TicketHistory[]
-  notifications      EmailNotification[]
 
   @@index([requesterId])
   @@index([assignedTechnicianId])
@@ -105,41 +94,4 @@ model TicketComment {
   @@index([ticketId])
   @@index([authorId])
   @@map("ticket_comments")
-}
-
-model TicketHistory {
-  id          Int      @id @default(autoincrement())
-  ticketId    Int      @map("ticket_id")
-  changedById Int?     @map("changed_by")
-  action      String   @db.VarChar(100)
-  oldValue    String   @default("") @map("old_value") @db.VarChar(500)
-  newValue    String   @default("") @map("new_value") @db.VarChar(500)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  ticket    Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
-  changedBy User?  @relation(fields: [changedById], references: [id], onDelete: SetNull)
-
-  @@index([ticketId])
-  @@index([changedById])
-  @@map("ticket_history")
-}
-
-model EmailNotification {
-  id                Int            @id @default(autoincrement())
-  ticketId          Int            @map("ticket_id")
-  recipientEmail    String         @map("recipient_email") @db.VarChar(320)
-  notificationType  String         @map("notification_type") @db.VarChar(100)
-  deliveryStatus    DeliveryStatus @default(PENDING) @map("delivery_status")
-  providerMessageId String?        @map("provider_message_id") @db.VarChar(255)
-  errorMessage      String?        @map("error_message") @db.Text
-  attemptCount      Int            @default(0) @map("attempt_count")
-  nextAttemptAt     DateTime?      @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
-  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  sentAt            DateTime?      @map("sent_at") @db.Timestamptz(3)
-
-  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
-
-  @@index([ticketId])
-  @@index([deliveryStatus, nextAttemptAt])
-  @@map("email_notifications")
 }

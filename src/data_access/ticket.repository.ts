@@ -48,21 +48,7 @@ export function findTicketById(
         include: { author: { select: safeUserSelection } },
         orderBy: { createdAt: "asc" },
       },
-      history: {
-        include: { changedBy: { select: safeUserSelection } },
-        orderBy: { createdAt: "asc" },
-      },
     },
-  });
-}
-
-export function findTicketSummaryById(
-  id: number,
-  database: DatabaseClient = prisma,
-) {
-  return database.ticket.findUnique({
-    where: { id },
-    include: ticketSummaryRelations,
   });
 }
 
@@ -119,67 +105,30 @@ export function listAllTickets(database: DatabaseClient = prisma) {
   });
 }
 
-/** Returns false when the ticket is missing, assigned, or no longer open. */
-export async function claimOpenTicket(
+export function updateTicketAssignment(
   ticketId: number,
   technicianId: number,
   database: DatabaseClient = prisma,
-): Promise<boolean> {
-  const result = await database.ticket.updateMany({
-    where: {
-      id: ticketId,
-      assignedTechnicianId: null,
-      status: TicketStatus.OPEN,
-    },
+) {
+  return database.ticket.update({
+    where: { id: ticketId },
     data: {
       assignedTechnicianId: technicianId,
       status: TicketStatus.IN_PROGRESS,
     },
   });
-
-  return result.count === 1;
 }
 
-/** Assign only when the ticket still matches the values read by the service. */
-export async function assignTechnician(
+export function updateTicketStatus(
   ticketId: number,
-  technicianId: number,
-  expectedTechnicianId: number | null,
-  expectedStatus: TicketStatus,
-  database: DatabaseClient = prisma,
-): Promise<boolean> {
-  const result = await database.ticket.updateMany({
-    where: {
-      id: ticketId,
-      assignedTechnicianId: expectedTechnicianId,
-      status: expectedStatus,
-    },
-    data: {
-      assignedTechnicianId: technicianId,
-      status: TicketStatus.IN_PROGRESS,
-    },
-  });
-
-  return result.count === 1;
-}
-
-/** Change status only if no other request has changed it since it was read. */
-export async function transitionTicketStatus(
-  ticketId: number,
-  expectedStatus: TicketStatus,
   status: TicketStatus,
   database: DatabaseClient = prisma,
-): Promise<boolean> {
-  const result = await database.ticket.updateMany({
-    where: {
-      id: ticketId,
-      status: expectedStatus,
-    },
+) {
+  return database.ticket.update({
+    where: { id: ticketId },
     data: {
       status,
       resolvedAt: status === TicketStatus.RESOLVED ? new Date() : null,
     },
   });
-
-  return result.count === 1;
 }

@@ -1,8 +1,10 @@
 import type { RequestHandler } from "express";
 import { HttpError } from "../errors/http-error.js";
-import { readAuthenticationCookie } from "../services/auth-cookie.js";
-import { authenticateAccessToken } from "../services/auth.service.js";
-import { InvalidAccessTokenError } from "../services/token.service.js";
+import {
+  authenticateAccessToken,
+  InvalidAccessTokenError,
+  readAuthenticationCookie,
+} from "../services/auth/index.js";
 
 function readBearerToken(authorizationHeader: string | undefined): string {
   const parts = authorizationHeader?.trim().split(/\s+/) ?? [];

@@ -1,18 +1,18 @@
-import type { Role } from "../../generated/prisma/client.js";
-import { DevelopmentIdentityProvider } from "../providers/identity/development-identity-provider.js";
-import type { ExternalIdentity } from "../providers/identity/identity-provider.js";
-import { runInTransaction } from "../database/prisma.js";
+import type { Role } from "../../../generated/prisma/client.js";
+import { DevelopmentIdentityProvider } from "../../providers/identity/development-identity-provider.js";
+import type { ExternalIdentity } from "../../providers/identity/identity-provider.js";
+import { runInTransaction } from "../../database/prisma.js";
 import {
   findUserByEmail,
   findUserById,
   findUserByMicrosoftOid,
   upsertUserFromIdentity,
-} from "../repositories/index.js";
+} from "../../data_access/index.js";
 import {
   createAccessToken,
   TOKEN_LIFETIME_SECONDS,
   verifyAccessToken,
-} from "./token.service.js";
+} from "./token.js";
 
 export type AuthenticationErrorCode =
   | "DEVELOPMENT_LOGIN_DISABLED"

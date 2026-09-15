@@ -1,13 +1,11 @@
 import { Role } from "../../../generated/prisma/client.js";
 import {
-  findTicketAccessRecordById,
   findTicketById,
   listAllTickets,
-  listTicketHistory,
   listTicketsByRequester,
   listTicketsVisibleToTechnician,
-} from "../../repositories/index.js";
-import type { AuthenticatedUser } from "../auth.service.js";
+} from "../../data_access/index.js";
+import type { AuthenticatedUser } from "../auth/index.js";
 import { requireTicketViewAccess } from "./access.js";
 import { TicketServiceError } from "./errors.js";
 
@@ -39,21 +37,4 @@ export async function getTicketForUser(
   requireTicketViewAccess(currentUser, ticket);
 
   return ticket;
-}
-
-export async function getTicketHistoryForUser(
-  currentUser: AuthenticatedUser,
-  ticketId: number,
-) {
-  const ticket = await findTicketAccessRecordById(ticketId);
-
-  if (!ticket) {
-    throw new TicketServiceError(
-      "TICKET_NOT_FOUND",
-      "The requested ticket does not exist",
-    );
-  }
-
-  requireTicketViewAccess(currentUser, ticket);
-  return listTicketHistory(ticketId);
 }

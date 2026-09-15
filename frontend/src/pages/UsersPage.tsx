@@ -3,7 +3,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { ErrorMessage, PageHeader, formatDate } from "../components/Ui";
 import type { ManagedUser, Role } from "../types";
-const roles: Role[] = ["STUDENT", "FACULTY", "TECHNICIAN", "ADMIN"];
+const roles: Role[] = ["STUDENT", "TECHNICIAN", "ADMIN"];
 export function UsersPage() {
   const { user: currentUser } = useAuth(); const [users, setUsers] = useState<ManagedUser[]>([]); const [error, setError] = useState<string | null>(null); const [saving, setSaving] = useState<number | null>(null);
   const load = async () => { try { setUsers((await api.users()).users); } catch (e) { setError(e instanceof Error ? e.message : "Could not load users."); } };

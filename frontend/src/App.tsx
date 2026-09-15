@@ -3,7 +3,6 @@ import { AuthProvider } from "./auth";
 import { AppLayout } from "./components/AppLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
-import { CategoriesPage } from "./pages/CategoriesPage";
 import { CreateTicketPage } from "./pages/CreateTicketPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { TicketDetailPage } from "./pages/TicketDetailPage";
@@ -18,7 +17,6 @@ export default function App() {
         <Route path="/tickets/new" element={<CreateTicketPage />} />
         <Route path="/tickets/:ticketId" element={<TicketDetailPage />} />
         <Route element={<ProtectedRoute roles={["ADMIN"]} />}>
-          <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/users" element={<UsersPage />} />
         </Route>
       </Route></Route>

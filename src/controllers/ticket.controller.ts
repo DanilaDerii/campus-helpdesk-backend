@@ -9,12 +9,10 @@ import {
   changeTicketStatus,
   claimTicket,
   createTicket,
-  getTicketCommentsForUser,
   getTicketForUser,
-  getTicketHistoryForUser,
   listTicketsForUser,
   type CreateTicketInput,
-} from "../services/ticket.service.js";
+} from "../services/ticket/index.js";
 import {
   readEnumValue,
   readPositiveIntegerParameter,
@@ -163,38 +161,4 @@ export const addTicketCommentController: RequestHandler = async (
   );
 
   response.status(201).json({ comment });
-};
-
-export const listTicketCommentsController: RequestHandler = async (
-  request,
-  response,
-) => {
-  const currentUser = requireAuthenticatedUser(request);
-  const comments = await getTicketCommentsForUser(
-    currentUser,
-    readPositiveIntegerParameter(
-      request.params.ticketId,
-      "ticketId",
-      "INVALID_TICKET_ID",
-    ),
-  );
-
-  response.status(200).json({ comments });
-};
-
-export const listTicketHistoryController: RequestHandler = async (
-  request,
-  response,
-) => {
-  const currentUser = requireAuthenticatedUser(request);
-  const history = await getTicketHistoryForUser(
-    currentUser,
-    readPositiveIntegerParameter(
-      request.params.ticketId,
-      "ticketId",
-      "INVALID_TICKET_ID",
-    ),
-  );
-
-  response.status(200).json({ history });
 };

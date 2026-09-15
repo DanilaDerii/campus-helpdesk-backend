@@ -11,15 +11,11 @@ interface LogFields {
   errorType?: string;
   upstreamStatus?: number;
   statusCode?: number;
-  notificationId?: number;
-  attempt?: number;
-  nextAttemptAt?: string;
   port?: number;
   host?: string;
   signal?: string;
   configuration?: string;
   users?: number;
-  categories?: number;
 }
 
 const levels: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };

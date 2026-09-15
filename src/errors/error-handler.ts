@@ -1,20 +1,19 @@
 import type { ErrorRequestHandler } from "express";
 import { logEvent, safeErrorDetails } from "../logging/logger.js";
-import { AuthenticationError } from "../services/auth.service.js";
-import { CategoryServiceError } from "../services/category.service.js";
-import { TicketServiceError } from "../services/ticket.service.js";
-import { InvalidAccessTokenError } from "../services/token.service.js";
-import { UserAdministrationError } from "../services/user.service.js";
+import {
+  AuthenticationError,
+  InvalidAccessTokenError,
+  UserAdministrationError,
+} from "../services/auth/index.js";
+import { TicketServiceError } from "../services/ticket/index.js";
 import { HttpError } from "./http-error.js";
 
 const ticketConflicts = new Set([
   "TICKET_ALREADY_ASSIGNED",
   "TICKET_NOT_CLAIMABLE",
   "INVALID_STATUS_TRANSITION",
-  "TICKET_STATUS_CONFLICT",
   "INVALID_TECHNICIAN",
   "TICKET_ALREADY_RESOLVED",
-  "TICKET_ASSIGNMENT_CONFLICT",
 ]);
 
 function readStringProperty(error: object, property: string): string | undefined {
@@ -76,9 +75,7 @@ export const errorHandler: ErrorRequestHandler = (
       : ticketConflicts.has(error.code) ? 409 : 404;
     code = error.code;
     message = error.message;
-  } else if (
-    error instanceof CategoryServiceError || error instanceof UserAdministrationError
-  ) {
+  } else if (error instanceof UserAdministrationError) {
     statusCode = error.code.endsWith("FORBIDDEN")
       ? 403
       : error.code.endsWith("NOT_FOUND") ? 404 : 409;

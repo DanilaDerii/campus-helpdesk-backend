@@ -71,10 +71,8 @@ resolve under `/helpdesk/assets/`, an unauthenticated visit lands on
 
 ### The post-login destination
 
-`authenticationSuccessPath()` in `src/services/auth-cookie.ts` still redirects to
-`/helpdesk/api/v1/me`, so a completed Microsoft sign-in lands on raw JSON rather
-than the application. That destination should become the frontend root once the
-settings above are in place.
+`authenticationSuccessPath()` in `src/services/auth/cookie.ts` redirects to the
+`/helpdesk/` frontend root after Microsoft sign-in.
 
 ## Host and configuration
 

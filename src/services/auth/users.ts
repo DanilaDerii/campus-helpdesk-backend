@@ -1,11 +1,11 @@
-import { Role } from "../../generated/prisma/client.js";
+import { Role } from "../../../generated/prisma/client.js";
 import {
   findUserById,
   listUsers,
   updateUserAccess,
   type UserAccessUpdate,
-} from "../repositories/index.js";
-import type { AuthenticatedUser } from "./auth.service.js";
+} from "../../data_access/index.js";
+import type { AuthenticatedUser } from "./login.js";
 
 export type UserAdministrationUpdate = UserAccessUpdate;
 

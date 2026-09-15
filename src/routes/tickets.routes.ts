@@ -5,8 +5,6 @@ import {
   claimTicketController,
   createTicketController,
   getTicketController,
-  listTicketCommentsController,
-  listTicketHistoryController,
   listTicketsController,
   updateTicketStatusController,
 } from "../controllers/ticket.controller.js";
@@ -22,5 +20,3 @@ ticketRoutes.post("/:ticketId/claim", claimTicketController);
 ticketRoutes.patch("/:ticketId/status", updateTicketStatusController);
 ticketRoutes.patch("/:ticketId/assignment", assignTicketController);
 ticketRoutes.post("/:ticketId/comments", addTicketCommentController);
-ticketRoutes.get("/:ticketId/comments", listTicketCommentsController);
-ticketRoutes.get("/:ticketId/history", listTicketHistoryController);

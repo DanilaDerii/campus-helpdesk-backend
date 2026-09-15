@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { SignJWT, jwtVerify } from "jose";
-import { configuredSecretProvider } from "../providers/secrets/configured-secret-provider.js";
+import { configuredSecretProvider } from "../../providers/secrets/configured-secret-provider.js";
 
 const TOKEN_ISSUER = "campus-helpdesk";
 const TOKEN_AUDIENCE = "campus-helpdesk-api";

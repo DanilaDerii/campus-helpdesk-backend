@@ -10,9 +10,6 @@ erDiagram
     ticket_categories ||--o{ tickets : categorizes
     tickets ||--o{ ticket_comments : contains
     users ||--o{ ticket_comments : authors
-    tickets ||--o{ ticket_history : records
-    users o|--o{ ticket_history : changes
-    tickets ||--o{ email_notifications : generates
 
     users {
         int id PK
@@ -49,27 +46,5 @@ erDiagram
         int author_id FK
         string message
         datetime created_at
-    }
-    ticket_history {
-        int id PK
-        int ticket_id FK
-        int changed_by FK "nullable"
-        string action
-        string old_value
-        string new_value
-        datetime created_at
-    }
-    email_notifications {
-        int id PK
-        int ticket_id FK
-        string recipient_email
-        string notification_type
-        DeliveryStatus delivery_status
-        string provider_message_id "nullable"
-        string error_message "nullable"
-        int attempt_count
-        datetime next_attempt_at "nullable"
-        datetime created_at
-        datetime sent_at "nullable"
     }
 ```

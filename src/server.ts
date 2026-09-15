@@ -24,16 +24,13 @@ process.env.PUBLIC_BASE_PATH = configuration.publicBasePath;
 const [
   { createApp },
   { disconnectDatabase },
-  { startNotificationRetryWorker },
 ] = await Promise.all([
   import("./app.js"),
   import("./database/prisma.js"),
-  import("./services/notification.service.js"),
 ]);
 
 const app = createApp();
 const server = app.listen(configuration.port, configuration.host);
-let stopNotificationRetryWorker = async () => {};
 
 server.on("listening", () => {
   logEvent("info", "server_listening", {
@@ -41,15 +38,13 @@ server.on("listening", () => {
     host: configuration.host,
     port: configuration.port,
   });
-  stopNotificationRetryWorker = startNotificationRetryWorker();
 });
 
 server.once("error", (error: NodeJS.ErrnoException) => {
   logEvent("error", "server_start_failed", {
     operation: "startup", ...safeErrorDetails(error),
   });
-  void stopNotificationRetryWorker()
-    .then(() => disconnectDatabase())
+  void disconnectDatabase()
     .finally(() => process.exit(1));
 });
 
@@ -79,10 +74,7 @@ function shutDown(signal: NodeJS.Signals): void {
   }, 10_000);
   forcedExit.unref();
 
-  void Promise.all([
-    closeServer(),
-    stopNotificationRetryWorker(),
-  ])
+  void closeServer()
     .then(() => disconnectDatabase())
     .then(() => {
       clearTimeout(forcedExit);
