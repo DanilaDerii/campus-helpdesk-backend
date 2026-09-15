@@ -1,10 +1,7 @@
-import { logEvent, safeErrorDetails } from "../../logging/logger.js";
-import { createBrevoEmailProvider } from "../../providers/email/brevo-email-provider.js";
-import { ConsoleEmailProvider } from "../../providers/email/console-email-provider.js";
-import type {
-  EmailMessage,
-  EmailProvider,
-} from "../../providers/email/email-provider.js";
+import {
+  sendEmail,
+  type EmailMessage,
+} from "../../integrations/email/email.js";
 
 export type TicketNotificationType =
   | "TICKET_CREATED"
@@ -18,10 +15,6 @@ export interface TicketNotification {
   notificationType: TicketNotificationType;
   ticket: { id: number; title: string; status: string };
 }
-
-const emailProvider: EmailProvider = process.env.NODE_ENV === "production"
-  ? createBrevoEmailProvider()
-  : new ConsoleEmailProvider();
 
 function buildEmailMessage(notification: TicketNotification): EmailMessage {
   const ticketLabel = `Ticket #${notification.ticket.id}`;
@@ -49,11 +42,8 @@ export async function sendTicketNotification(
   notification: TicketNotification,
 ): Promise<void> {
   try {
-    await emailProvider.send(buildEmailMessage(notification));
-  } catch (error: unknown) {
-    logEvent("error", "email_delivery_failed", {
-      operation: "email_delivery",
-      ...safeErrorDetails(error),
-    });
+    await sendEmail(buildEmailMessage(notification));
+  } catch {
+    console.error("Email delivery failed");
   }
 }

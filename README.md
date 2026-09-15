@@ -13,8 +13,8 @@ Team: Alexandr Romanov, Andrei Filip, Danila Derii. Live: https://jesoas.org/hel
 
 | Path | Contents |
 | --- | --- |
-| `src/routes`, `controllers`, `services`, `data_access` | Request flow: route, authentication, controller, service, Prisma |
-| `src/providers` | Secrets (env or Key Vault), identity (development or Entra), email (console or Brevo). Production implementations are used when `NODE_ENV=production`. |
+| `src/api`, `services`, `data_access` | Request flow: API route, service, Prisma, PostgreSQL |
+| `src/integrations` | Secrets (env or Key Vault), identity (development or Entra), email (local stub or Brevo). Production implementations are used when `NODE_ENV=production`. |
 | `prisma/` | Schema, migrations, development seed |
 | `frontend/` | Single-page application |
 | `deploy/` | Release script, Nginx and systemd files, [deployment guide](deploy/DEPLOYMENT.md), [demo script](deploy/DEMO.md) |

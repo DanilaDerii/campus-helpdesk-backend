@@ -1,6 +1,7 @@
 import { Role } from "../../../generated/prisma/client.js";
 import {
   findTicketById,
+  listCategories,
   listAllTickets,
   listTicketsByRequester,
   listTicketsVisibleToTechnician,
@@ -8,6 +9,10 @@ import {
 import type { AuthenticatedUser } from "../auth/index.js";
 import { requireTicketViewAccess } from "./access.js";
 import { TicketServiceError } from "./errors.js";
+
+export function getCategories() {
+  return listCategories();
+}
 
 export function listTicketsForUser(currentUser: AuthenticatedUser) {
   if (currentUser.role === Role.ADMIN) {

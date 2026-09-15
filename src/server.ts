@@ -3,18 +3,15 @@ import {
   readRuntimeConfiguration,
   RuntimeConfigurationError,
 } from "./config/runtime-config.js";
-import { logEvent, safeErrorDetails } from "./logging/logger.js";
 
 let configuration;
 
 try {
   configuration = readRuntimeConfiguration();
 } catch (error: unknown) {
-  logEvent("error", "startup_configuration_invalid", {
-    operation: "startup",
-    configuration: error instanceof RuntimeConfigurationError
-      ? error.code : "UNKNOWN_CONFIGURATION_ERROR",
-  });
+  const code = error instanceof RuntimeConfigurationError
+    ? error.code : "UNKNOWN_CONFIGURATION_ERROR";
+  console.error(`Startup configuration invalid: ${code}`);
   process.exit(1);
 }
 
@@ -26,24 +23,20 @@ const [
   { disconnectDatabase },
 ] = await Promise.all([
   import("./app.js"),
-  import("./database/prisma.js"),
+  import("./data_access/prisma.js"),
 ]);
 
 const app = createApp();
 const server = app.listen(configuration.port, configuration.host);
 
 server.on("listening", () => {
-  logEvent("info", "server_listening", {
-    operation: "startup",
-    host: configuration.host,
-    port: configuration.port,
-  });
+  console.log(
+    `Campus HelpDesk listening on ${configuration.host}:${configuration.port}`,
+  );
 });
 
-server.once("error", (error: NodeJS.ErrnoException) => {
-  logEvent("error", "server_start_failed", {
-    operation: "startup", ...safeErrorDetails(error),
-  });
+server.once("error", (_error: NodeJS.ErrnoException) => {
+  console.error("Campus HelpDesk failed to start");
   void disconnectDatabase()
     .finally(() => process.exit(1));
 });
@@ -63,12 +56,10 @@ function shutDown(signal: NodeJS.Signals): void {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
-  logEvent("info", "server_stopping", { operation: "shutdown", signal });
+  console.log(`Campus HelpDesk stopping: ${signal}`);
 
   const forcedExit = setTimeout(() => {
-    logEvent("error", "server_shutdown_timed_out", {
-      operation: "shutdown", signal,
-    });
+    console.error("Campus HelpDesk shutdown timed out");
     server.closeAllConnections();
     process.exit(1);
   }, 10_000);
@@ -80,11 +71,9 @@ function shutDown(signal: NodeJS.Signals): void {
       clearTimeout(forcedExit);
       process.exit(0);
     })
-    .catch((error: unknown) => {
+    .catch(() => {
       clearTimeout(forcedExit);
-      logEvent("error", "server_shutdown_failed", {
-        operation: "shutdown", ...safeErrorDetails(error),
-      });
+      console.error("Campus HelpDesk shutdown failed");
       process.exit(1);
     });
 }

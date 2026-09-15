@@ -1,4 +1,3 @@
-export { getCategories } from "./categories.js";
 export {
   assignTicketTechnician,
   changeTicketStatus,
@@ -14,6 +13,7 @@ export {
   type TicketServiceErrorCode,
 } from "./errors.js";
 export {
+  getCategories,
   getTicketForUser,
   listTicketsForUser,
 } from "./queries.js";

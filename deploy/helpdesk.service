@@ -17,7 +17,6 @@ Group=helpdesk
 WorkingDirectory=/opt/campus-helpdesk
 EnvironmentFile=/opt/campus-helpdesk/.env
 ExecStart=/usr/bin/node dist/src/server.js
-LogNamespace=helpdesk
 StandardOutput=journal
 StandardError=journal
 Restart=always

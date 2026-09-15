@@ -34,7 +34,7 @@ rehearse once before recording.
    3. Resolve the ticket. Each change sends an email, and a resolved ticket cannot be reopened.
 6. **Code (1.5 min).**
    - `prisma/schema.prisma` and its migrations.
-   - `src/providers/`: local and Azure/Brevo implementations behind one interface.
+   - `src/integrations/`: Microsoft Entra, Azure Key Vault and Brevo implementations.
    - `deploy/deploy.sh`.
 
 ## Pitfalls

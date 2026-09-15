@@ -1,7 +1,6 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, Role } from "../generated/prisma/client.js";
-import { logEvent, safeErrorDetails } from "../src/logging/logger.js";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -50,17 +49,12 @@ async function seed() {
     });
   }
 
-  logEvent("info", "database_seeded", {
-    operation: "seed",
-    users: developmentUsers.length,
-  });
+  console.log(`Seeded ${developmentUsers.length} development users`);
 }
 
 seed()
-  .catch((error: unknown) => {
-    logEvent("error", "database_seed_failed", {
-      operation: "seed", ...safeErrorDetails(error),
-    });
+  .catch(() => {
+    console.error("Database seed failed");
     process.exitCode = 1;
   })
   .finally(async () => {

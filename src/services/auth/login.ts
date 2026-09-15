@@ -1,7 +1,8 @@
 import type { Role } from "../../../generated/prisma/client.js";
-import { DevelopmentIdentityProvider } from "../../providers/identity/development-identity-provider.js";
-import type { ExternalIdentity } from "../../providers/identity/identity-provider.js";
-import { runInTransaction } from "../../database/prisma.js";
+import {
+  createDevelopmentIdentity,
+  type ExternalIdentity,
+} from "../../integrations/identity/support.js";
 import {
   findUserByEmail,
   findUserById,
@@ -44,10 +45,6 @@ export interface LoginResult {
   user: AuthenticatedUser;
 }
 
-export type DevelopmentLoginResult = LoginResult;
-
-const developmentIdentityProvider = new DevelopmentIdentityProvider();
-
 function toAuthenticatedUser(user: AuthenticatedUser): AuthenticatedUser {
   return {
     id: user.id,
@@ -78,7 +75,7 @@ function isUniqueConstraintError(error: unknown): boolean {
 /** Development-only login for the seeded local accounts. */
 export async function developmentLogin(
   email: string,
-): Promise<DevelopmentLoginResult> {
+): Promise<LoginResult> {
   if (process.env.NODE_ENV === "production") {
     throw new AuthenticationError(
       "DEVELOPMENT_LOGIN_DISABLED",
@@ -86,7 +83,7 @@ export async function developmentLogin(
     );
   }
 
-  const identity = await developmentIdentityProvider.completeLogin({ email });
+  const identity = createDevelopmentIdentity(email);
   const user = await findUserByEmail(identity.email);
 
   if (!user) {
@@ -111,30 +108,24 @@ export async function developmentLogin(
 export async function completeExternalLogin(
   identity: ExternalIdentity,
 ): Promise<LoginResult> {
-  let user: AuthenticatedUser;
-
   try {
-    user = await runInTransaction(async (transaction) => {
-      const existingUser = await findUserByMicrosoftOid(
-        identity.microsoftOid,
-        transaction,
+    const existingUser = await findUserByMicrosoftOid(identity.microsoftOid);
+
+    if (existingUser && !existingUser.isActive) {
+      throw new AuthenticationError("USER_INACTIVE", "This user is inactive");
+    }
+
+    const emailOwner = await findUserByEmail(identity.email);
+
+    if (emailOwner && emailOwner.microsoftOid !== identity.microsoftOid) {
+      throw new AuthenticationError(
+        "EXTERNAL_IDENTITY_CONFLICT",
+        "This email address belongs to a different local account",
       );
+    }
 
-      if (existingUser && !existingUser.isActive) {
-        throw new AuthenticationError("USER_INACTIVE", "This user is inactive");
-      }
-
-      const emailOwner = await findUserByEmail(identity.email, transaction);
-
-      if (emailOwner && emailOwner.microsoftOid !== identity.microsoftOid) {
-        throw new AuthenticationError(
-          "EXTERNAL_IDENTITY_CONFLICT",
-          "This email address belongs to a different local account",
-        );
-      }
-
-      return upsertUserFromIdentity(identity, transaction);
-    });
+    const user = await upsertUserFromIdentity(identity);
+    return createLoginResult(user);
   } catch (error: unknown) {
     if (isUniqueConstraintError(error)) {
       throw new AuthenticationError(
@@ -145,8 +136,6 @@ export async function completeExternalLogin(
 
     throw error;
   }
-
-  return createLoginResult(user);
 }
 
 /** Verify a JWT and load the current role and active state from PostgreSQL. */

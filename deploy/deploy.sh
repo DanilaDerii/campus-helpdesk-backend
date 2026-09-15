@@ -67,15 +67,11 @@ install_if_changed() {
 install_host_files() {
   local nginx_changed=0 systemd_changed=0
 
-  sudo install -d -m 0755 /etc/nginx/snippets /var/www/helpdesk /etc/systemd/journald@helpdesk.conf.d
-  sudo install -d -m 0750 -o www-data -g adm /var/log/helpdesk-nginx
+  sudo install -d -m 0755 /etc/nginx/snippets /var/www/helpdesk
 
-  if install_if_changed deploy/nginx/helpdesk.logging.conf /etc/nginx/conf.d/helpdesk.logging.conf; then nginx_changed=1; fi
   if install_if_changed deploy/nginx/helpdesk.proxy.conf /etc/nginx/snippets/helpdesk.proxy.conf; then nginx_changed=1; fi
   if install_if_changed deploy/nginx/helpdesk.location.conf /etc/nginx/snippets/helpdesk.locations.conf; then nginx_changed=1; fi
-  if install_if_changed deploy/journald/retention.conf /etc/systemd/journald@helpdesk.conf.d/retention.conf; then systemd_changed=1; fi
   if install_if_changed deploy/helpdesk.service /etc/systemd/system/helpdesk.service; then systemd_changed=1; fi
-  install_if_changed deploy/logrotate/helpdesk /etc/logrotate.d/helpdesk || true
 
   # -R follows the sites-enabled symlink; -r would not.
   if ! sudo grep -Rqs "helpdesk.locations.conf" /etc/nginx/sites-enabled/ /etc/nginx/sites-available/ /etc/nginx/conf.d/ /etc/nginx/nginx.conf; then
@@ -178,7 +174,7 @@ for attempt in $(seq 1 10); do
   if curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
     break
   fi
-  [ "$attempt" -eq 10 ] && fail "The service did not answer on port $PORT. Check: journalctl --namespace=helpdesk -u $SERVICE -n 50"
+  [ "$attempt" -eq 10 ] && fail "The service did not answer on port $PORT. Check: journalctl -u $SERVICE -n 50"
   sleep 1
 done
 
@@ -187,7 +183,7 @@ echo "service        : $(systemctl is-active "$SERVICE")"
 
 # /health checks the process only; /ready also queries PostgreSQL.
 if ! curl -fsS --max-time 10 "http://127.0.0.1:${PORT}/ready" >/dev/null; then
-  fail "The service is up but /ready failed, so the database is not reachable. Check: journalctl --namespace=helpdesk -u $SERVICE -n 30 --no-pager"
+  fail "The service is up but /ready failed, so the database is not reachable. Check: journalctl -u $SERVICE -n 30 --no-pager"
 fi
 echo "local  /ready  : ok (database reachable)"
 

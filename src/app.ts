@@ -1,16 +1,13 @@
 import express from "express";
-import { checkDatabaseReadiness } from "./database/prisma.js";
-import { errorHandler } from "./errors/error-handler.js";
-import { HttpError } from "./errors/http-error.js";
-import { requestContext } from "./middleware/request-context.js";
-import { apiRoutes } from "./routes/index.js";
+import { checkDatabaseReadiness } from "./data_access/prisma.js";
+import { errorHandler, HttpError } from "./api/guardrails/errors.js";
+import { apiRoutes } from "./api/index.js";
 
 export function createApp() {
   const app = express();
 
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
-  app.use(requestContext);
   app.use(express.json({ limit: "100kb", strict: true }));
 
   app.get("/health", (_request, response) => {

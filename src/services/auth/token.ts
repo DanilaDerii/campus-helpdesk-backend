@@ -1,13 +1,13 @@
 import "dotenv/config";
 import { SignJWT, jwtVerify } from "jose";
-import { configuredSecretProvider } from "../../providers/secrets/configured-secret-provider.js";
+import { getSecret } from "../../integrations/secrets/secrets.js";
 
 const TOKEN_ISSUER = "campus-helpdesk";
 const TOKEN_AUDIENCE = "campus-helpdesk-api";
 const TOKEN_LIFETIME = "1h";
 export const TOKEN_LIFETIME_SECONDS = 60 * 60;
 const signingKey = new TextEncoder().encode(
-  await configuredSecretProvider.get("JWT_SECRET"),
+  await getSecret("JWT_SECRET"),
 );
 
 export interface VerifiedAccessToken {

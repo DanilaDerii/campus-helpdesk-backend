@@ -1,6 +1,6 @@
 import type { CookieOptions, Response } from "express";
 
-export const AUTHENTICATION_COOKIE = "helpdesk_access";
+const AUTHENTICATION_COOKIE = "helpdesk_access";
 
 function publicBasePath(): string {
   return process.env.PUBLIC_BASE_PATH?.trim() || "/";

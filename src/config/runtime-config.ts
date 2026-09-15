@@ -20,7 +20,6 @@ const environments = new Set<RuntimeEnvironment>([
   "production",
 ]);
 const loopbackHosts = new Set(["127.0.0.1", "::1", "localhost"]);
-const logLevels = new Set(["debug", "info", "warn", "error"]);
 
 function readRequired(
   environment: NodeJS.ProcessEnv,
@@ -85,12 +84,6 @@ export function readRuntimeConfiguration(
 
   if (!loopbackHosts.has(host)) {
     throw new RuntimeConfigurationError("HOST_MUST_BE_LOOPBACK");
-  }
-
-  const logLevel = values.LOG_LEVEL?.trim();
-
-  if (logLevel && !logLevels.has(logLevel)) {
-    throw new RuntimeConfigurationError("INVALID_LOG_LEVEL");
   }
 
   if (environment === "production") {
